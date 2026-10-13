@@ -123,6 +123,10 @@ enum Command
     SettingsTextKey,
     SaveFormatPng,
     SaveFormatJpg,
+    Paste,
+    CropModeMenu,
+    CropImageChoice,
+    SelectPixelsChoice,
     SettingsPageFirst = 2100,
     SettingsPageLast = SettingsPageFirst + 6,
     ColorFirst = PaletteFirst,
@@ -143,7 +147,7 @@ constexpr const wchar_t *LogoStyleNames[] = {
 const std::array<Color, 8> Palette = {rgb(239, 68, 68),   rgb(249, 115, 22), rgb(250, 204, 21),
                                       rgb(34, 197, 94),   rgb(14, 165, 233), rgb(168, 85, 247),
                                       rgb(255, 255, 255), rgb(15, 23, 42)};
-constexpr std::array<uint8_t, 9> StyleCounts = {1, 1, 3, 5, 6, 3, 4, 1, 1};
+constexpr std::array<uint8_t, 9> StyleCounts = {1, 1, 3, 5, 6, 4, 4, 1, 1};
 constexpr int StyleChoiceStride = 8;
 constexpr const wchar_t *ToolNames[] = {L"Select", L"Pen",       L"Circle", L"Arrow",    L"Check",
                                         L"Line",   L"Rectangle", L"Text",   L"Highlight"};
@@ -248,6 +252,7 @@ struct Application
     Bitmap cropSource;
     std::optional<Rect> appliedCrop;
     bool cropping = false;
+    bool cropSelectPreferred = false;
     Point cropEnd;
     Bitmap pickerImage;
     bool pickingColor = false;
@@ -345,6 +350,8 @@ struct Application
     int sizeRepeatCommand = 0;
     bool sizeRepeated = false, sizeRepeatUndo = false;
     size_t tooltipCount = 0;
+    unsigned menuDepth = 0;
+    bool tooltipSuppressed = false;
     UINT taskbarCreated = 0;
 } app;
 #include "editor_theme.h"
@@ -607,6 +614,10 @@ bool selected()
 {
     return app.document.selected >= 0 &&
            app.document.selected < static_cast<int>(app.document.items.size());
+}
+bool imageSelected()
+{
+    return selected() && static_cast<bool>(app.document.items[app.document.selected].raster);
 }
 bool curvedArrowSelected()
 {
@@ -1516,7 +1527,7 @@ HCURSOR editorCursor(Point point)
     if (onCanvas && app.erasing)
         return currentEraserCursor();
     if (onCanvas && app.tool == Tool::Select && selected() &&
-        app.document.items[app.document.selected].kind == Tool::Text)
+        (app.document.items[app.document.selected].kind == Tool::Text || imageSelected()))
     {
         const int handle = app.drag == Drag::Resize
                                ? app.handle
@@ -1715,7 +1726,7 @@ std::vector<Point> handles(const Annotation &item)
     if (item.kind == Tool::Arrow || item.kind == Tool::Line)
         return {item.a, item.b};
     auto r = item.bounds();
-    if (item.kind == Tool::Text)
+    if (item.kind == Tool::Text || item.raster)
         return {{r.left, r.top},
                 {r.right, r.top},
                 {r.right, r.bottom},
@@ -1847,6 +1858,7 @@ void buildButtons()
                                       : tools[i] == CircleTool ? CircleStyleMenu
                                       : tools[i] == CheckTool  ? CheckStyleMenu
                                       : tools[i] == LineTool   ? LineStyleMenu
+                                      : tools[i] == CropTool   ? CropModeMenu
                                                                : 0;
                 if (styleMenu)
                 {
@@ -1854,7 +1866,8 @@ void buildButtons()
                     add(styleMenu, L"", 14, toolbarHeight() + 8 + i * h + (h - 22) / 2, 20);
                 }
                 x = 6;
-                add(tools[i], labels[i], 64, toolbarHeight() + 8 + i * h, h - 2);
+                add(tools[i], tools[i] == CropTool && app.cropSelectPreferred ? L"Select area" : labels[i],
+                    64, toolbarHeight() + 8 + i * h, h - 2);
             }
             x = 6;
             add(AppMenu, L"Settings", 64, client.bottom - StatusHeight - 52, 46);
@@ -1871,7 +1884,7 @@ void buildButtons()
             };
             x = client.right - 40;
             add(ToggleFormatting, L"", 28, toolbarHeight() + 18, 28);
-            if (!app.erasing && !app.cropping)
+            if (!app.erasing && !app.cropping && !imageSelected())
             {
                 // The color chip opens the picker; the hex value is displayed beside it.
                 property(CustomColor, L"",
@@ -1923,6 +1936,9 @@ void buildButtons()
                          {l.opacitySlider.left + 6, l.opacitySlider.top, l.opacitySlider.right - 6,
                           l.opacitySlider.bottom});
             }
+            else if (imageSelected() && !app.cropping && !app.erasing)
+                property(OpacitySlider, L"", {l.opacitySlider.left + 6, l.opacitySlider.top,
+                                              l.opacitySlider.right - 6, l.opacitySlider.bottom});
         }
         if (!app.fullScreen && hasImage() && (app.collapsedRows & 4))
         {
@@ -2001,7 +2017,8 @@ void buildButtons()
     if (app.settingsPanelOpen)
         buildSettingsPanelButtons();
     if (app.tooltip)
-        SendMessageW(app.tooltip, TTM_ACTIVATE, !app.settingsPanelOpen, 0);
+        SendMessageW(app.tooltip, TTM_ACTIVATE,
+                     !app.settingsPanelOpen && !app.menuDepth && !app.pressed && !app.tooltipSuppressed, 0);
     // Keep native tooltip hit areas in physical pixels as the window moves between displays.
     if (app.tooltip && !app.settingsPanelOpen)
     {
@@ -2028,7 +2045,11 @@ void buildButtons()
                 hint = L"Capture an area (Ctrl+N)";
                 break;
             case CropTool:
-                hint = L"Crop - drag the area to keep; Ctrl+Z restores the full image";
+                hint = app.cropSelectPreferred ? L"Select area - move pixels and leave white behind"
+                                               : L"Crop - drag the area to keep; Ctrl+Z restores the full image";
+                break;
+            case CropModeMenu:
+                hint = L"Choose Crop or Select area";
                 break;
             case Copy:
                 hint = L"Copy image with annotations (Ctrl+C)";
@@ -2198,6 +2219,10 @@ void closeSettingsPanel()
 }
 bool enabled(int id)
 {
+    if (imageSelected() && (id == CustomColor || id == Eyedropper || paletteCommand(id) ||
+                           id == SizeDown || id == SizeUp || id == StrokeSlider ||
+                           (id >= StrokePresetFirst && id <= StrokePresetThird)))
+        return false;
     if (app.exportOptions.jpg &&
         (id == ProfessionalBorder || id == ProfessionalBlur || id == ProfessionalRounded))
         return false;
@@ -2235,7 +2260,8 @@ bool enabled(int id)
     if (id == CopySnipText)
         return hasImage() && !app.textResult.valid();
     if (id == Copy || id == Save || id == SaveAs || id == Fit || id == ToggleFit || id == Actual || id == Eyedropper ||
-        id == CropTool || id == TextTool || id == HighlightTool || id == EraserTool ||
+        id == CropTool || id == CropModeMenu || id == CropImageChoice || id == SelectPixelsChoice ||
+        id == Paste || id == TextTool || id == HighlightTool || id == EraserTool ||
         id == RectangleTool || id == TextBold || id == TextBox || id == TextSizeMenu ||
         (id >= SelectTool && id <= LineTool) || (id >= CircleStyleMenu && id <= LineStyleMenu))
         return hasImage();
@@ -2250,7 +2276,7 @@ bool active(int id)
     if (app.erasing &&
         (id == TextTool || id == HighlightTool || (id >= SelectTool && id <= LineTool)))
         return false;
-    if (id == CropTool)
+    if (id == CropTool || id == CropModeMenu)
         return app.cropping;
     if (app.cropping &&
         (id == HighlightTool || id == TextTool || (id >= SelectTool && id <= LineTool)))
@@ -2446,6 +2472,14 @@ void drawUIIcon(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush, int id, Poin
         line(6, 10, 14, 10);
         break;
     case CropTool:
+    case CropImageChoice:
+    case SelectPixelsChoice:
+        if (id == SelectPixelsChoice || (id == CropTool && app.cropSelectPreferred))
+        {
+            rt->DrawRectangle({origin.x + 3, origin.y + 3, origin.x + 17, origin.y + 17},
+                              brush, 1.7f, app.graphics.dashStroke.get());
+            break;
+        }
         line(5, 1, 5, 15);
         line(5, 15, 19, 15);
         line(1, 5, 15, 5);
@@ -3252,6 +3286,8 @@ void changeTextFormatting(float size, bool bold, bool boxed)
 }
 void changeColor(Color value)
 {
+    if (imageSelected())
+        return;
     if (app.tool == Tool::Select && !selected())
         selectTool(Tool::Pen);
     // Recoloring a selected shape updates that shape tool's preference, even in Select mode.
@@ -3384,6 +3420,8 @@ void paletteMenu(POINT point)
 }
 void changeThickness(int delta)
 {
+    if (imageSelected())
+        return;
     if (textMode())
     {
         const bool current =
@@ -3670,6 +3708,90 @@ void applyCrop(Rect r)
     status(L"Cropped to " + std::to_wstring(app.image.width) + L" x " +
            std::to_wstring(app.image.height) + L" - Ctrl+Z restores the image");
 }
+Annotation rasterPiece(Bitmap pixels, Rect bounds)
+{
+    Annotation item;
+    item.kind = Tool::Select;
+    item.thickness = 0;
+    item.a = {bounds.left, bounds.top};
+    item.b = {bounds.right, bounds.bottom};
+    item.raster = std::make_shared<const Bitmap>(std::move(pixels));
+    return item;
+}
+void liftSelection(Rect r)
+{
+    const int left = std::clamp(static_cast<int>(std::floor(r.left)), 0, app.image.width);
+    const int top = std::clamp(static_cast<int>(std::floor(r.top)), 0, app.image.height);
+    const int right = std::clamp(static_cast<int>(std::ceil(r.right)), 0, app.image.width);
+    const int bottom = std::clamp(static_cast<int>(std::ceil(r.bottom)), 0, app.image.height);
+    if (left >= right || top >= bottom)
+        return;
+    const Rect bounds{static_cast<float>(left), static_cast<float>(top),
+                      static_cast<float>(right), static_cast<float>(bottom)};
+    auto piece = rasterPiece(app.graphics.flattenRegion(app.image, app.document.items, -1,
+                                                        left, top, right - left, bottom - top), bounds);
+    Annotation source;
+    source.kind = Tool::Select;
+    source.thickness = 0;
+    source.a = piece.a;
+    source.b = piece.b;
+    source.whiteout = true;
+    // Cover the original pixels and annotation fragments without changing objects outside the area.
+    app.document.begin();
+    for (auto &item : app.document.items)
+    {
+        const auto b = item.bounds();
+        const float margin = item.thickness / 2 +
+            (item.kind == Tool::Arrow ? std::max(12.0f, item.thickness * 3) : 0);
+        if (!item.whiteout && b.left - margin < bounds.right && b.right + margin > bounds.left &&
+            b.top - margin < bounds.bottom && b.bottom + margin > bounds.top)
+            item.cutouts.push_back(bounds);
+    }
+    app.document.items.push_back(std::move(source));
+    app.document.items.push_back(std::move(piece));
+    app.document.commit();
+    selectTool(Tool::Select);
+    app.document.selected = static_cast<int>(app.document.items.size()) - 1;
+    app.dirty = true;
+    updateTitle();
+    repaint();
+    status(L"Selection ready - drag to move, drag handles to resize; Ctrl+Z restores the source");
+}
+void pasteClipboardImage()
+{
+    if (!hasImage())
+        return;
+    auto pixels = readClipboardBitmap(app.window, app.graphics);
+    if (!pixels || pixels->empty())
+    {
+        status(L"No image on the clipboard. Copy an image or image file, then press Ctrl+V.");
+        return;
+    }
+    const Rect canvas = canvasRect();
+    const Point first = app.view.toImage({canvas.left, canvas.top});
+    const Point last = app.view.toImage({canvas.right, canvas.bottom});
+    const Rect visible{std::clamp(first.x, 0.0f, static_cast<float>(app.image.width)),
+                       std::clamp(first.y, 0.0f, static_cast<float>(app.image.height)),
+                       std::clamp(last.x, 0.0f, static_cast<float>(app.image.width)),
+                       std::clamp(last.y, 0.0f, static_cast<float>(app.image.height))};
+    const float scale = std::min({1.0f, visible.width() / pixels->width,
+                                 visible.height() / pixels->height});
+    if (scale <= 0)
+        return;
+    const float width = pixels->width * scale, height = pixels->height * scale;
+    const Point a{visible.left + (visible.width() - width) / 2,
+                  visible.top + (visible.height() - height) / 2};
+    auto piece = rasterPiece(std::move(*pixels), {a.x, a.y, a.x + width, a.y + height});
+    app.document.begin();
+    app.document.items.push_back(std::move(piece));
+    app.document.commit();
+    selectTool(Tool::Select);
+    app.document.selected = static_cast<int>(app.document.items.size()) - 1;
+    app.dirty = true;
+    updateTitle();
+    repaint();
+    status(L"Image pasted - drag to move, drag handles to resize; hold Shift to keep its proportions");
+}
 void mouseDown(LPARAM lp, bool middle = false)
 {
     SetFocus(app.window);
@@ -3686,6 +3808,12 @@ void mouseDown(LPARAM lp, bool middle = false)
                 if (app.buttons[i].rect.contains(screen) && enabled(app.buttons[i].command))
                 {
                     app.pressed = static_cast<int>(i + 1);
+                    app.tooltipSuppressed = true;
+                    if (app.tooltip)
+                    {
+                        SendMessageW(app.tooltip, TTM_POP, 0, 0);
+                        SendMessageW(app.tooltip, TTM_ACTIVATE, FALSE, 0);
+                    }
                     app.hover = app.buttons[i].command;
                     app.settingsFocus = app.hover;
                     SetCapture(app.window);
@@ -3881,6 +4009,12 @@ void mouseMove(LPARAM lp)
     }
     if (app.drag == Drag::None)
     {
+        if (!app.menuDepth && app.tooltipSuppressed)
+        {
+            app.tooltipSuppressed = false;
+            if (app.tooltip)
+                SendMessageW(app.tooltip, TTM_ACTIVATE, !app.settingsPanelOpen && !app.pressed, 0);
+        }
         int hover = 0;
         for (size_t i = app.settingsPanelOpen ? app.settingsButtonsStart : 0;
              i < app.buttons.size(); ++i)
@@ -3977,7 +4111,16 @@ void mouseMove(LPARAM lp)
         }
         else if (app.drag == Drag::Resize)
         {
-            if (item.kind == Tool::Text && app.handle >= 4)
+            if (item.raster && app.handle >= 4)
+            {
+                auto r = app.before.bounds();
+                if (app.handle == 4) r.top = std::min(p.y, r.bottom - 2);
+                if (app.handle == 5) r.right = std::max(p.x, r.left + 2);
+                if (app.handle == 6) r.bottom = std::max(p.y, r.top + 2);
+                if (app.handle == 7) r.left = std::min(p.x, r.right - 2);
+                item.resize(app.before.bounds(), r);
+            }
+            else if (item.kind == Tool::Text && app.handle >= 4)
                 resizeTextFrame(item, app.handle,
                                 handles(app.before)[app.handle] + (p - app.dragStart));
             else
@@ -4022,7 +4165,10 @@ void mouseUp(LPARAM lp)
         mouseMove(lp);
         const auto crop = rectangle(app.dragStart, app.cropEnd);
         finishDrag();
-        applyCrop(crop);
+        if (app.cropSelectPreferred)
+            liftSelection(crop);
+        else
+            applyCrop(crop);
         return;
     }
     if (app.pressed)
@@ -4523,28 +4669,38 @@ void drawShapeChoice(const DRAWITEMSTRUCT &draw)
     brush->SetColor(color(hover || chosen ? uiSelected() : uiSurface()));
     target->FillRoundedRectangle(D2D1::RoundedRect({3, 2, width - 3, height - 2}, 7, 7),
                                  brush.get());
-    Annotation icon;
-    icon.kind = choice.tool;
-    icon.style = choice.style;
-    icon.color = app.colors[static_cast<size_t>(choice.tool)];
-    if (choice.tool == Tool::Check &&
-        (choice.style >= 3) != (app.styles[static_cast<size_t>(Tool::Check)] >= 3))
-        icon.color = choice.style >= 3 ? Palette[0] : Palette[3];
-    icon.thickness = 2;
-    icon.a = {0, 0};
-    icon.b = {34, choice.tool == Tool::Check ? 34.0f : 25.0f};
-    if (choice.tool == Tool::Arrow || choice.tool == Tool::Line)
+    if (draw.itemID == CropImageChoice || draw.itemID == SelectPixelsChoice)
     {
-        icon.a = {0, 25};
-        icon.b = {38, 0};
+        target->SetTransform(D2D1::Matrix3x2F::Scale(1.5f, 1.5f) *
+                             D2D1::Matrix3x2F::Translation(15, height / 2 - 15));
+        drawUIIcon(target.get(), brush.get(), draw.itemID, {0, 0},
+                   hover || chosen ? uiAccentText() : Accent);
     }
-    const auto bounds = icon.bounds();
-    const float scale = std::min(40 / (bounds.width() + 5), 32 / (bounds.height() + 5));
-    target->SetTransform(
-        D2D1::Matrix3x2F::Scale(scale, scale) *
-        D2D1::Matrix3x2F::Translation(30 - (bounds.left + bounds.right) / 2 * scale,
-                                      height / 2 - (bounds.top + bounds.bottom) / 2 * scale));
-    app.graphics.drawAnnotations(target.get(), {icon});
+    else
+    {
+        Annotation icon;
+        icon.kind = choice.tool;
+        icon.style = choice.style;
+        icon.color = app.colors[static_cast<size_t>(choice.tool)];
+        if (choice.tool == Tool::Check &&
+            (choice.style >= 3) != (app.styles[static_cast<size_t>(Tool::Check)] >= 3))
+            icon.color = choice.style >= 3 ? Palette[0] : Palette[3];
+        icon.thickness = 2;
+        icon.a = {0, 0};
+        icon.b = {34, choice.tool == Tool::Check ? 34.0f : 25.0f};
+        if (choice.tool == Tool::Arrow || choice.tool == Tool::Line)
+        {
+            icon.a = {0, 25};
+            icon.b = {38, 0};
+        }
+        const auto bounds = icon.bounds();
+        const float scale = std::min(40 / (bounds.width() + 5), 32 / (bounds.height() + 5));
+        target->SetTransform(
+            D2D1::Matrix3x2F::Scale(scale, scale) *
+            D2D1::Matrix3x2F::Translation(30 - (bounds.left + bounds.right) / 2 * scale,
+                                          height / 2 - (bounds.top + bounds.bottom) / 2 * scale));
+        app.graphics.drawAnnotations(target.get(), {icon});
+    }
     target->SetTransform(D2D1::Matrix3x2F::Identity());
     brush->SetColor(color(chosen || hover ? uiAccentText() : Ink));
     app.graphics.font->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
@@ -4607,7 +4763,10 @@ void drawLogoChoice(const DRAWITEMSTRUCT &draw)
 void showShapeChoices(int id)
 {
     std::vector<ShapeChoice> choices;
-    if (id == CircleStyleMenu)
+    const bool crop = id == CropModeMenu;
+    if (crop)
+        choices = {{Tool::Select, 0, L"Crop"}, {Tool::Select, 1, L"Select area"}};
+    else if (id == CircleStyleMenu)
         choices = {{Tool::Circle, 0, L"Circle"},
                    {Tool::Circle, 1, L"Highlight circle"},
                    {Tool::Circle, 2, L"Dashed circle"},
@@ -4626,8 +4785,10 @@ void showShapeChoices(int id)
                    {Tool::Check, 2, L"Simple check"},   {Tool::Check, 3, L"Boxed X"},
                    {Tool::Check, 4, L"Circle X badge"}, {Tool::Check, 5, L"Simple X"}};
     else
-        choices = {
-            {Tool::Line, 0, L"Solid"}, {Tool::Line, 1, L"Dashed"}, {Tool::Line, 2, L"Dotted"}};
+        choices = {{Tool::Line, 0, L"Solid"},
+                   {Tool::Line, 1, L"Dashed"},
+                   {Tool::Line, 2, L"Dotted"},
+                   {Tool::Line, 3, L"Measurement"}};
     HMENU menu = CreatePopupMenu();
     if (!menu)
         return;
@@ -4635,13 +4796,15 @@ void showShapeChoices(int id)
     for (const auto &choice : choices)
     {
         const bool chosen =
+            crop ? app.cropSelectPreferred == (choice.style == 1) :
             selected() && (inspectorStyleMenu() == id)
                 ? inspectorTool() == choice.tool &&
                       app.document.items[app.document.selected].style == choice.style
                 : app.styles[static_cast<size_t>(choice.tool)] == choice.style &&
                       (id != CircleStyleMenu || app.geometryTool == choice.tool);
         AppendMenuW(menu, MF_OWNERDRAW | (chosen ? MF_CHECKED : 0),
-                    styleCommand(choice.tool, choice.style), reinterpret_cast<LPCWSTR>(&choice));
+                    crop ? (choice.style == 0 ? CropImageChoice : SelectPixelsChoice)
+                         : styleCommand(choice.tool, choice.style), reinterpret_cast<LPCWSTR>(&choice));
     }
     POINT anchor{};
     POINT pointer{};
@@ -4683,7 +4846,8 @@ void command(int id, bool editSelectedStyle)
     if (app.settingsPanelOpen &&
         (id == NewSnip || id == InstantSnip || id == RecentSnips || id == Copy || id == Save ||
          id == SaveAs || id == Undo || id == Redo || id == DeleteSelected || id == Clear ||
-         id == CropTool || id == EraserTool || id == FullScreen || id == Fit || id == ToggleFit || id == Actual || id == Exit))
+         id == CropTool || id == CropImageChoice || id == SelectPixelsChoice || id == Paste ||
+         id == EraserTool || id == FullScreen || id == Fit || id == ToggleFit || id == Actual || id == Exit))
         closeSettingsPanel();
     if (app.sliderDrag)
         finishPropertySlider();
@@ -4967,6 +5131,24 @@ void command(int id, bool editSelectedStyle)
             refreshEditorCursor();
             repaint();
         }
+        break;
+    case CropModeMenu:
+        if (hasImage()) showShapeChoices(CropModeMenu);
+        break;
+    case CropImageChoice:
+    case SelectPixelsChoice:
+        if (hasImage())
+        {
+            selectTool(Tool::Select);
+            app.cropSelectPreferred = id == SelectPixelsChoice;
+            app.cropping = true;
+            app.status.clear();
+            refreshEditorCursor();
+            repaint();
+        }
+        break;
+    case Paste:
+        pasteClipboardImage();
         break;
     case EraserTool:
         if (hasImage())
@@ -5659,7 +5841,9 @@ HMENU createMenu()
     AppendMenuW(edit, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(edit, MF_STRING, DeleteSelected, L"&Delete selection\tDel");
     AppendMenuW(edit, MF_STRING, Clear, L"Clear &annotations");
-    AppendMenuW(edit, MF_STRING, CropTool, L"&Crop image");
+    AppendMenuW(edit, MF_STRING, CropImageChoice, L"&Crop image");
+    AppendMenuW(edit, MF_STRING, SelectPixelsChoice, L"Select &area");
+    AppendMenuW(edit, MF_STRING, Paste, L"&Paste image\tCtrl+V");
     AppendMenuW(edit, MF_STRING, EraserTool, L"&Eraser");
     AppendMenuW(view, MF_STRING, Fit, L"&Fit image");
     AppendMenuW(view, MF_STRING, Actual, L"&Actual size (100%)");
@@ -5780,7 +5964,7 @@ void updateMenus()
     auto enable = [&](int id, bool yes) {
         EnableMenuItem(menu, id, MF_BYCOMMAND | (yes ? MF_ENABLED : MF_GRAYED));
     };
-    for (int id : {Copy, Save, SaveAs, Fit, Actual, CropTool, EraserTool, CopySnipText})
+    for (int id : {Copy, Paste, Save, SaveAs, Fit, Actual, CropImageChoice, SelectPixelsChoice, EraserTool, CopySnipText})
         enable(id, hasImage());
     CheckMenuItem(menu, EraserTool, MF_BYCOMMAND | (app.erasing ? MF_CHECKED : MF_UNCHECKED));
     enable(Undo, app.document.canUndo());
@@ -6004,6 +6188,9 @@ void processKey(WPARAM key, LPARAM info = 0)
         case 'C':
             command(Copy);
             break;
+        case 'V':
+            command(Paste);
+            break;
         case 'S':
             command(SaveAs);
             break;
@@ -6133,6 +6320,19 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
         info->ptMinTrackSize = {static_cast<LONG>(850 * d), static_cast<LONG>(430 * d)};
         return 0;
     }
+    case WM_ENTERMENULOOP:
+        ++app.menuDepth;
+        app.tooltipSuppressed = true;
+        if (app.tooltip)
+        {
+            SendMessageW(app.tooltip, TTM_POP, 0, 0);
+            SendMessageW(app.tooltip, TTM_ACTIVATE, FALSE, 0);
+        }
+        return 0;
+    case WM_EXITMENULOOP:
+        if (app.menuDepth) --app.menuDepth;
+        // Resume hover help on the next pointer movement, not over the menu's first option.
+        return 0;
     case WM_MEASUREITEM: {
         auto item = reinterpret_cast<MEASUREITEMSTRUCT *>(lp);
         if (item->CtlType == ODT_MENU)
@@ -9060,7 +9260,8 @@ int applicationMain(HINSTANCE instance, int show)
                 "highlights with uniform "
                 "stroke overlap, readable text, nib geometry, hit testing/resizing, and PNG round "
                 "trips, six check/X styles at small and large sizes, "
-                "solid/dashed/dotted line patterns, outlined/curved/straight/block gloss arrow "
+                "solid/dashed/dotted line patterns, measurement caps with rotation/hit testing/"
+                "erasing/opacity/PNG export, outlined/curved/straight/block gloss arrow "
                 "artwork and "
                 "selection, PNG "
                 "pixel-perfect round trip, moved annotations, image color sampling, "
@@ -9844,7 +10045,7 @@ int applicationMain(HINSTANCE instance, int show)
                 if (activeColor() != Palette[5])
                     throw std::runtime_error("Changing X badge lost its custom color.");
                 command(styleCommand(Tool::Check, 0));
-                for (int style = 0; style < 3; ++style)
+                for (int style = 0; style < StyleCounts[static_cast<size_t>(Tool::Line)]; ++style)
                 {
                     command(styleCommand(Tool::Line, style));
                     float y = 300.0f + style * 16;

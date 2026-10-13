@@ -38,6 +38,15 @@ Change the text shortcut under Settings > Capture or Keyboard shortcuts in the t
 Settings > Actions > Copy text from snip reads text from the current screenshot.
 Check exact identifiers for OCR mistakes; zoom in before selecting small text.
 Click Crop in the left tool rail, drag the part to keep, and release.
+The arrow beside Crop offers Crop and Select area in either toolbar layout.
+Select area: draw a rectangle around screenshot pixels and annotations to lift them.
+Drag the selected piece to move it; white is left in the original location.
+Drag its corner or side handles to resize; hold Shift on a corner to keep proportions.
+Click elsewhere to place it. Use the ordinary Select tool to pick it up again.
+Ctrl+V pastes a copied image or image file onto the current screenshot.
+PNG transparency is preserved. Drag to move and use its handles to resize.
+Oversized images start fitted to the visible screenshot; original pixels are kept for resizing.
+Each selection, paste, move, and resize supports Ctrl+Z / Ctrl+Y. Esc cancels a drag.
 Esc cancels cropping. Ctrl+Z restores the previous image; Ctrl+Y reapplies the crop.
 Annotations move with the crop. Copy and Save export just the cropped image.
 
@@ -77,7 +86,9 @@ Drag to create; hold Shift for a perfect circle/square. Click Shapes to repeat t
 Use the small arrow beside Shapes, Arrow, Check, and Line to choose a visual style.
 Arrows: classic, outlined with a black border, curved gloss, straight gloss, or block gloss.
 Block gloss has a wide straight shaft, square tail, triangular head, black border, and highlight.
-Line: solid, dashed, or dotted. Hold Shift to snap its angle; click Line in the left tool rail to select it.
+Line: solid, dashed, dotted, or Measurement (|-----|) with perpendicular end caps.
+Choose Measurement from Line's style dropdown to mark a distance or tolerance.
+Hold Shift to snap its angle; select the line and drag either endpoint to adjust it.
 Check: choose boxed, circle-badge, or simple green checks and red Xs from its dropdown.
 Click to place or drag to size. Switching checks/Xs picks green/red; colors can be customized.
 Select: move stickers; drag corners to resize, or arrow/line endpoints to turn.

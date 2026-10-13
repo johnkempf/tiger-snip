@@ -40,7 +40,9 @@ void buildClassicButtons()
         x = 296;
         add(FullScreen, L"", 36, 11);
         x = 344;
-        add(CropTool, L"Crop", 82, 11);
+        add(CropTool, app.cropSelectPreferred ? L"Select area" : L"Crop", 84, 11);
+        x -= 4;
+        add(CropModeMenu, L"", 24, 11);
         x = clientDips().right - 374;
         add(RecentSnips, L"Recent", 114, 11);
         x = clientDips().right - 250;
@@ -81,7 +83,7 @@ void buildClassicButtons()
                 add(i == static_cast<int>(app.palette.size()) ? CustomColor : Eyedropper, L"", 28,
                     top, 28);
         }
-        if (!app.erasing)
+        if (!app.erasing && !imageSelected())
         {
             x = layout.formatting.left + 52;
             add(SizeDown, L"\u2212", 28, y, 28);

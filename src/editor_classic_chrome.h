@@ -73,8 +73,8 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
              app.graphics.smallFont.get());
         const float formattingLeft = layout.formatting.left;
         divider(formattingLeft - 10, formatTop + 11, formatTop + 31);
-        if (app.erasing)
-            text(L"Whole object",
+        if (app.erasing || imageSelected())
+            text(imageSelected() ? L"Drag handles to resize" : L"Whole object",
                  {formattingLeft, formatTop + 5, formattingLeft + 160, formatTop + 37}, Muted,
                  app.graphics.smallFont.get(), true);
         else
@@ -99,7 +99,8 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
             continue; // These selection controls are painted above the image below.
         auto r = button.rect;
         const bool available = enabled(button.command);
-        const bool styleMenu = button.command >= CircleStyleMenu && button.command <= LineStyleMenu;
+        const bool styleMenu = (button.command >= CircleStyleMenu && button.command <= LineStyleMenu) ||
+                               button.command == CropModeMenu;
         const int partner = button.command == CircleTool        ? CircleStyleMenu
                             : button.command == ArrowTool       ? ArrowStyleMenu
                             : button.command == CheckTool       ? CheckStyleMenu
@@ -108,6 +109,8 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
                             : button.command == ArrowStyleMenu  ? ArrowTool
                             : button.command == CheckStyleMenu  ? CheckTool
                             : button.command == LineStyleMenu   ? LineTool
+                            : button.command == CropTool        ? CropModeMenu
+                            : button.command == CropModeMenu    ? CropTool
                                                                 : 0;
         const bool on = active(button.command) || (styleMenu && active(partner));
         const bool over = app.hover == button.command || (partner && app.hover == partner);
@@ -154,7 +157,8 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
             bg = mixColor(bg, Ink, .08f);
         if (button.command == NewSnip)
             paintCaptureSurface(rt, brush, r, 8, over, down);
-        else if (styleMenu || (button.command >= CircleTool && button.command <= LineTool))
+        else if (styleMenu || button.command == CropTool ||
+                 (button.command >= CircleTool && button.command <= LineTool))
         {
             // Split tools share one surface; their small chevron remains a separate hit target.
             Rect whole = styleMenu ? Rect{r.left - 84, r.top, r.right, r.bottom}

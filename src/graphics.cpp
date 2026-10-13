@@ -125,6 +125,43 @@ void Graphics::drawAnnotations(ID2D1RenderTarget *rt, const std::vector<Annotati
     for (size_t index = 0; index < items.size(); ++index)
     {
         const auto &item = items[index];
+        Com<ID2D1Layer> cutoutLayer;
+        Com<ID2D1Geometry> visible;
+        if (!item.cutouts.empty())
+        {
+            auto bounds = item.bounds();
+            const float margin = item.thickness / 2 + 2 +
+                (item.kind == Tool::Arrow ? std::max(12.0f, item.thickness * 3) : 0);
+            const auto domain = D2D1::RectF(bounds.left - margin, bounds.top - margin,
+                                           bounds.right + margin, bounds.bottom + margin);
+            Com<ID2D1RectangleGeometry> rectangle;
+            check(factory->CreateRectangleGeometry(domain, rectangle.put()),
+                  "Cannot clip a selected fragment.");
+            check(rectangle->QueryInterface(__uuidof(ID2D1Geometry),
+                                            reinterpret_cast<void **>(visible.put())),
+                  "Cannot initialize a selected fragment mask.");
+            for (const auto &cut : item.cutouts)
+            {
+                Com<ID2D1RectangleGeometry> removed;
+                check(factory->CreateRectangleGeometry({cut.left, cut.top, cut.right, cut.bottom},
+                                                       removed.put()),
+                      "Cannot remove a selected fragment.");
+                Com<ID2D1PathGeometry> remainder;
+                Com<ID2D1GeometrySink> sink;
+                check(factory->CreatePathGeometry(remainder.put()), "Cannot preserve the remaining object.");
+                check(remainder->Open(sink.put()), "Cannot initialize the remaining object.");
+                check(visible->CombineWithGeometry(removed.get(), D2D1_COMBINE_MODE_EXCLUDE,
+                                                   nullptr, sink.get()),
+                      "Cannot subtract a selected fragment.");
+                check(sink->Close(), "Cannot finish the remaining object.");
+                check(remainder->QueryInterface(__uuidof(ID2D1Geometry),
+                                                reinterpret_cast<void **>(visible.put())),
+                      "Cannot update the selected fragment mask.");
+            }
+            check(rt->CreateLayer(cutoutLayer.put()), "Cannot initialize selection clipping.");
+            rt->PushLayer(D2D1::LayerParameters(domain, visible.get(), D2D1_ANTIALIAS_MODE_ALIASED),
+                          cutoutLayer.get());
+        }
         const float opacity = std::clamp(item.opacity, 0.0f, 1.0f);
         if (opacity < 1)
         {
@@ -147,6 +184,28 @@ void Graphics::drawAnnotations(ID2D1RenderTarget *rt, const std::vector<Annotati
         };
         switch (item.kind)
         {
+        case Tool::Select:
+            if (item.whiteout)
+            {
+                brush->SetColor(color(rgb(255, 255, 255)));
+                rt->FillRectangle({r.left, r.top, r.right, r.bottom}, brush.get());
+            }
+            else if (item.raster && !item.raster->empty())
+            {
+                auto pixels = item.raster->pixels;
+                for (size_t i = 0; i < pixels.size(); i += 4)
+                    for (int c = 0; c < 3; ++c)
+                        pixels[i + c] = static_cast<uint8_t>((pixels[i + c] * pixels[i + 3] + 127) / 255);
+                Com<ID2D1Bitmap> bitmap;
+                check(rt->CreateBitmap(D2D1::SizeU(item.raster->width, item.raster->height),
+                                       pixels.data(), item.raster->width * 4,
+                                       D2D1::BitmapProperties(D2D1::PixelFormat(
+                                           DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
+                                       bitmap.put()), "Cannot draw the pasted image.");
+                rt->DrawBitmap(bitmap.get(), {r.left, r.top, r.right, r.bottom}, 1,
+                               D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+            }
+            break;
         case Tool::Text: {
             if (item.text.empty() && static_cast<int>(index) != editingText)
                 break;
@@ -292,6 +351,12 @@ void Graphics::drawAnnotations(ID2D1RenderTarget *rt, const std::vector<Annotati
                  item.style == 1   ? dashStroke.get()
                  : item.style == 2 ? dotStroke.get()
                                    : nullptr);
+            if (item.style == 3)
+            {
+                const Point cap = item.measurementCapOffset();
+                line(item.a - cap, item.a + cap, width);
+                line(item.b - cap, item.b + cap, width);
+            }
             break;
         case Tool::Check: {
             float w = r.width(), h = r.height(), stroke = std::max(1.0f, std::min(w, h) * .06f);
@@ -327,6 +392,8 @@ void Graphics::drawAnnotations(ID2D1RenderTarget *rt, const std::vector<Annotati
             break;
         }
         if (opacity < 1)
+            rt->PopLayer();
+        if (cutoutLayer)
             rt->PopLayer();
     }
 }
@@ -849,6 +916,58 @@ void Graphics::test()
     runModelTests();
     auto source = Bitmap::create(160, 120);
     std::fill(source.pixels.begin(), source.pixels.end(), 255);
+    {
+        auto canvas = Bitmap::create(240, 240);
+        std::fill(canvas.pixels.begin(), canvas.pixels.end(), 255);
+        for (Point direction : {Point{100, 0}, Point{0, 100}, Point{60, 80}, Point{-80, 60}})
+            for (float width : {2.0f, 4.0f, 12.0f})
+            {
+                Annotation measurement;
+                measurement.kind = Tool::Line;
+                measurement.style = 3;
+                measurement.color = rgb(0, 0, 0);
+                measurement.thickness = width;
+                measurement.a = {110, 80};
+                measurement.b = measurement.a + direction;
+                const auto image = exportImage(canvas, {measurement});
+                const Point cap = measurement.measurementCapOffset();
+                for (Point end : {measurement.a, measurement.b})
+                    for (float side : {-1.0f, 1.0f})
+                    {
+                        const Color pixel = *image.sample(end + cap * (.7f * side));
+                        if ((pixel & 255) > 100 || ((pixel >> 8) & 255) > 100 ||
+                            ((pixel >> 16) & 255) > 100)
+                            throw std::runtime_error("Measurement line export lost an end cap.");
+                    }
+                if ((*image.sample(measurement.a + direction * .5f) & 255) > 100 ||
+                    decode(png(image)).pixels != image.pixels)
+                    throw std::runtime_error("Measurement shaft or PNG round trip failed.");
+                measurement.opacity = .5f;
+                const auto translucent = flatten(canvas, {measurement});
+                for (Point p : {measurement.a, measurement.b,
+                                measurement.a + direction * .5f})
+                {
+                    const int expected = (255 + (*image.sample(p) & 255)) / 2;
+                    const int actual = *translucent.sample(p) & 255;
+                    if (std::abs(actual - expected) > 2)
+                        throw std::runtime_error("Measurement cap joins compounded opacity.");
+                }
+            }
+        Annotation example;
+        example.kind = Tool::Line;
+        example.style = 3;
+        example.thickness = 4;
+        example.color = rgb(37, 99, 235);
+        example.a = {40, 60};
+        example.b = {200, 60};
+        auto vertical = example;
+        vertical.a = {40, 110};
+        vertical.b = {40, 210};
+        auto diagonal = example;
+        diagonal.a = {90, 130};
+        diagonal.b = {200, 200};
+        saveBytes(L"measurement-line-preview.png", png(flatten(canvas, {example, vertical, diagonal})));
+    }
     {
         // Real JPEG round trips, including white screenshots, dark pixels and alpha.
         for (const auto channels : {std::array<uint8_t, 4>{255, 255, 255, 255},

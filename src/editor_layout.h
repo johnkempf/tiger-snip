@@ -49,7 +49,7 @@ const wchar_t *styleName(Tool tool, int style)
                                                L"Straight gloss", L"Block gloss"};
     static constexpr const wchar_t *check[] = {L"Boxed check", L"Circle badge",   L"Simple check",
                                                L"Boxed X",     L"Circle X badge", L"Simple X"};
-    static constexpr const wchar_t *line[] = {L"Solid", L"Dashed", L"Dotted"};
+    static constexpr const wchar_t *line[] = {L"Solid", L"Dashed", L"Dotted", L"Measurement"};
     switch (tool)
     {
     case Tool::Circle:
@@ -61,7 +61,7 @@ const wchar_t *styleName(Tool tool, int style)
     case Tool::Check:
         return check[style % 6];
     case Tool::Line:
-        return line[style % 3];
+        return line[style % 4];
     default:
         return L"";
     }
@@ -84,26 +84,29 @@ InspectorLayout inspectorLayout()
         y += h;
     };
     region(l.color, 68);
-    region(l.palette, 30.0f * ((static_cast<int>(app.palette.size()) + 2 + 7) / 8));
-    y += 20;
-    region(l.size, 30);
-    if (inspectorTool() != Tool::Check)
+    if (!imageSelected())
     {
-        region(l.presets, 34);
-        y += 8;
-        region(l.slider, 32);
+        region(l.palette, 30.0f * ((static_cast<int>(app.palette.size()) + 2 + 7) / 8));
+        y += 20;
+        region(l.size, 30);
+        if (inspectorTool() != Tool::Check)
+        {
+            region(l.presets, 34);
+            y += 8;
+            region(l.slider, 32);
+        }
+        if (inspectorStyleMenu())
+        {
+            y += 22;
+            region(l.styles, 82);
+        }
+        else if (textMode())
+        {
+            y += 22;
+            region(l.styles, 64);
+        }
     }
     y += 22;
-    if (inspectorStyleMenu())
-    {
-        region(l.styles, 82);
-        y += 22;
-    }
-    else if (textMode())
-    {
-        region(l.styles, 64);
-        y += 22;
-    }
     region(l.opacity, 30);
     region(l.opacitySlider, 32);
     y += 26;

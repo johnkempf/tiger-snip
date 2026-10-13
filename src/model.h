@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -62,6 +63,15 @@ constexpr Color rgb(unsigned r, unsigned g, unsigned b)
 {
     return r | (g << 8) | (b << 16);
 }
+struct Bitmap
+{
+    int width = 0, height = 0;
+    std::vector<uint8_t> pixels; // top-down, straight-alpha BGRA
+    bool empty() const { return width <= 0 || height <= 0 || pixels.empty(); }
+    static Bitmap create(int width, int height);
+    Bitmap crop(int x, int y, int width, int height) const;
+    std::optional<Color> sample(Point point) const;
+};
 struct Annotation
 {
     Tool kind = Tool::Pen;
@@ -78,10 +88,15 @@ struct Annotation
     float textHeight = 0;
     bool bold = false, boxed = false;
     bool curveFlipped = false;
+    // Raster pieces share immutable pixels across moves, resizes and undo history.
+    std::shared_ptr<const Bitmap> raster;
+    bool whiteout = false; // Fixed white source patch underneath a lifted selection.
+    std::vector<Rect> cutouts; // Removed fragments follow the remaining object during later edits.
     bool operator==(const Annotation &) const = default;
     bool flipCurvedArrow();
     Point arrowSpine(float fraction) const;
     std::vector<Point> arrowContour() const;
+    Point measurementCapOffset() const;
     Rect bounds() const;
     void move(Point delta);
     void resize(Rect from, Rect to);
@@ -114,15 +129,6 @@ class Document
     };
     std::optional<State> pending_;
     std::vector<State> undo_, redo_;
-};
-struct Bitmap
-{
-    int width = 0, height = 0;
-    std::vector<uint8_t> pixels; // top-down, straight-alpha BGRA; captures are opaque
-    bool empty() const { return width <= 0 || height <= 0 || pixels.empty(); }
-    static Bitmap create(int width, int height);
-    Bitmap crop(int x, int y, int width, int height) const;
-    std::optional<Color> sample(Point point) const;
 };
 struct View
 {

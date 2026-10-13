@@ -111,8 +111,22 @@ std::vector<Point> Annotation::arrowContour() const
         outline.push_back(side(i, -1));
     return outline;
 }
+Point Annotation::measurementCapOffset() const
+{
+    const Point v = b - a;
+    const float len = length(v);
+    const Point normal = len > .001f ? Point{-v.y / len, v.x / len} : Point{0, 1};
+    return normal * std::max(6.0f, thickness * 2);
+}
 Rect Annotation::bounds() const
 {
+    if (kind == Tool::Line && style == 3)
+    {
+        const Point cap = measurementCapOffset();
+        const Rect first = rectangle(a - cap, a + cap), last = rectangle(b - cap, b + cap);
+        return {std::min(first.left, last.left), std::min(first.top, last.top),
+                std::max(first.right, last.right), std::max(first.bottom, last.bottom)};
+    }
     if (kind == Tool::Arrow && style != 0)
     {
         auto outline = arrowContour();
@@ -150,6 +164,8 @@ void Annotation::move(Point d)
     b = b + d;
     for (auto &p : points)
         p = p + d;
+    for (auto &r : cutouts)
+        r = {r.left + d.x, r.top + d.y, r.right + d.x, r.bottom + d.y};
 }
 void Annotation::resize(Rect from, Rect to)
 {
@@ -181,9 +197,15 @@ void Annotation::resize(Rect from, Rect to)
     b = transform(b);
     for (auto &p : points)
         p = transform(p);
+    for (auto &r : cutouts)
+        r = rectangle(transform({r.left, r.top}), transform({r.right, r.bottom}));
 }
 bool Annotation::hit(Point p, float tol) const
 {
+    if (std::any_of(cutouts.begin(), cutouts.end(), [&](Rect r) { return r.contains(p); }))
+        return false;
+    if (raster || whiteout)
+        return bounds().contains(p, whiteout ? 0 : tol);
     if (kind == Tool::Highlight)
     {
         if (points.empty() || !bounds().contains(p, tol))
@@ -219,7 +241,17 @@ bool Annotation::hit(Point p, float tol) const
         return false;
     }
     if (kind == Tool::Line)
-        return segmentDistance(p, a, b) <= tol;
+    {
+        if (segmentDistance(p, a, b) <= tol)
+            return true;
+        if (style == 3)
+        {
+            const Point cap = measurementCapOffset();
+            return segmentDistance(p, a - cap, a + cap) <= tol ||
+                   segmentDistance(p, b - cap, b + cap) <= tol;
+        }
+        return false;
+    }
     if (kind == Tool::Arrow && style != 0)
     {
         auto outline = arrowContour();
@@ -309,7 +341,7 @@ int Document::hit(Point p, float tolerance) const
 {
     for (int i = static_cast<int>(items.size()) - 1; i >= 0; --i)
         if (items[i].hit(p, tolerance))
-            return i;
+            return items[i].whiteout ? -1 : i;
     return -1;
 }
 bool Document::eraseAlong(Point from, Point to, float tolerance)
@@ -337,6 +369,8 @@ bool Document::eraseAlong(Point from, Point to, float tolerance)
         for (int index = static_cast<int>(items.size()) - 1; index >= 0; --index)
             if (hitBounds[index].contains(p) && items[index].hit(p, tolerance))
             {
+                if (items[index].whiteout)
+                    break; // The white patch also hides objects underneath it from the eraser.
                 touched[index] = true;
                 changed = true;
                 break;
@@ -460,6 +494,39 @@ void runModelTests()
         require(!straight.flipCurvedArrow() && straight == unchanged);
     }
     Annotation other = arrow;
+    for (Point direction : {Point{100, 0}, Point{0, 100}, Point{-80, 60},
+                            Point{1, 1}, Point{0, 0}})
+    {
+        Annotation measurement;
+        measurement.kind = Tool::Line;
+        measurement.style = 3;
+        measurement.thickness = 4;
+        measurement.a = {100, 100};
+        measurement.b = measurement.a + direction;
+        const Point cap = measurement.measurementCapOffset();
+        require(std::abs(length(cap) - 8) < .001f);
+        require(std::abs(cap.x * direction.x + cap.y * direction.y) < .001f);
+        require(measurement.hit(measurement.a + direction * .5f, 0));
+        for (Point end : {measurement.a, measurement.b})
+        {
+            require(measurement.bounds().contains(end - cap, .001f) &&
+                    measurement.bounds().contains(end + cap, .001f));
+            require(measurement.hit(end + cap * .9f, 0) &&
+                    measurement.hit(end - cap * .9f, 0));
+            require(!measurement.hit(end + cap * 2, 0));
+        }
+        Document erased;
+        erased.items = {measurement};
+        erased.begin();
+        const Point onCap = measurement.a + cap * .9f;
+        require(erased.eraseAlong(onCap, onCap, 0) && erased.items.empty());
+        erased.commit();
+        require(erased.undo() && erased.items == std::vector<Annotation>{measurement});
+        measurement.move({20, -10});
+        require(measurement.hit(onCap + Point{20, -10}, 0));
+        measurement.style = 0;
+        require(!measurement.hit(onCap + Point{20, -10}, 0));
+    }
     other.kind = Tool::Line;
     other.style = 2;
     require(!other.flipCurvedArrow());

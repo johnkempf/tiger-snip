@@ -1,10 +1,186 @@
 #include "clipboard.h"
 #include "windows_support.h"
+#include "graphics.h"
+#include <shellapi.h>
+#include <fstream>
+#include <bit>
+#include <filesystem>
+#include <climits>
 #include <cstring>
 #include <stdexcept>
 
 namespace snip
 {
+namespace
+{
+std::optional<Bitmap> clipboardDib(const std::vector<uint8_t> &bytes)
+{
+    if (bytes.size() < sizeof(BITMAPINFOHEADER))
+        return std::nullopt;
+    BITMAPINFOHEADER h{};
+    std::memcpy(&h, bytes.data(), sizeof(h));
+    if (h.biSize < sizeof(h) || h.biSize > bytes.size() || h.biWidth <= 0 ||
+        h.biHeight == 0 || h.biHeight == LONG_MIN || h.biPlanes != 1 ||
+        (h.biBitCount != 24 && h.biBitCount != 32) ||
+        (h.biCompression != BI_RGB && h.biCompression != BI_BITFIELDS))
+        return std::nullopt;
+    const int height = std::abs(h.biHeight);
+    if (static_cast<uint64_t>(h.biWidth) * height > 128000000)
+        throw std::runtime_error("The clipboard image is too large.");
+    size_t offset = h.biSize;
+    uint32_t masks[4] = {0x00ff0000, 0x0000ff00, 0x000000ff, 0};
+    if (h.biCompression == BI_BITFIELDS)
+    {
+        if (h.biBitCount != 32 || (h.biSize != 40 && h.biSize < 52))
+            return std::nullopt;
+        const size_t maskBytes = h.biSize >= 56 ? 16 : 12;
+        if (bytes.size() < 40 + maskBytes)
+            return std::nullopt;
+        std::memcpy(masks, bytes.data() + 40, maskBytes);
+        if (h.biSize == 40)
+            offset += 12;
+        if (!masks[0] || !masks[1] || !masks[2] || (masks[0] & masks[1]) ||
+            (masks[0] & masks[2]) || (masks[1] & masks[2]) ||
+            (masks[3] & (masks[0] | masks[1] | masks[2])))
+            return std::nullopt;
+    }
+    if (h.biClrUsed > 256)
+        return std::nullopt;
+    offset += static_cast<size_t>(h.biClrUsed) * sizeof(RGBQUAD);
+    const uint64_t stride = ((static_cast<uint64_t>(h.biWidth) * h.biBitCount + 31) / 32) * 4;
+    if (offset > bytes.size() || stride * height > bytes.size() - offset)
+        return std::nullopt;
+    auto result = Bitmap::create(h.biWidth, height);
+    auto channel = [](uint32_t pixel, uint32_t mask) -> uint8_t {
+        if (!mask)
+            return 255;
+        const int shift = std::countr_zero(mask);
+        return static_cast<uint8_t>((static_cast<uint64_t>((pixel & mask) >> shift) * 255) /
+                                    (mask >> shift));
+    };
+    for (int y = 0; y < height; ++y)
+    {
+        const auto *row = bytes.data() + offset + stride * (h.biHeight < 0 ? y : height - 1 - y);
+        for (int x = 0; x < h.biWidth; ++x)
+        {
+            auto *out = result.pixels.data() + (static_cast<size_t>(y) * h.biWidth + x) * 4;
+            if (h.biBitCount == 24)
+            {
+                std::memcpy(out, row + x * 3, 3);
+                out[3] = 255;
+            }
+            else
+            {
+                uint32_t pixel;
+                std::memcpy(&pixel, row + x * 4, 4);
+                out[0] = channel(pixel, masks[2]);
+                out[1] = channel(pixel, masks[1]);
+                out[2] = channel(pixel, masks[0]);
+                out[3] = masks[3] ? channel(pixel, masks[3]) : 255;
+            }
+        }
+    }
+    return result;
+}
+}
+std::optional<Bitmap> readClipboardBitmap(HWND owner, Graphics &graphics)
+{
+    std::vector<std::vector<uint8_t>> encoded;
+    std::vector<std::vector<uint8_t>> dibs;
+    std::vector<std::wstring> files;
+    std::optional<Bitmap> native;
+    {
+        if (!OpenClipboard(owner))
+            throwWindowsError("The clipboard is busy. Try pasting again.");
+        struct Close { ~Close() { CloseClipboard(); } } close;
+        auto read = [](UINT format) -> std::vector<uint8_t> {
+            HANDLE memory = GetClipboardData(format);
+            if (!memory)
+                return {};
+            const size_t size = GlobalSize(memory);
+            if (!size || size > 512000000)
+                return {};
+            const auto *data = static_cast<const uint8_t *>(GlobalLock(memory));
+            if (!data)
+                return {};
+            std::vector<uint8_t> result;
+            try { result.assign(data, data + size); }
+            catch (...) { GlobalUnlock(memory); throw; }
+            GlobalUnlock(memory);
+            return result;
+        };
+        for (const wchar_t *name : {L"PNG", L"image/png"})
+            if (auto bytes = read(RegisterClipboardFormatW(name)); !bytes.empty())
+                encoded.push_back(std::move(bytes));
+        for (UINT format : {static_cast<UINT>(CF_DIBV5), static_cast<UINT>(CF_DIB)})
+            if (auto bytes = read(format); !bytes.empty())
+                dibs.push_back(std::move(bytes));
+        if (auto drop = static_cast<HDROP>(GetClipboardData(CF_HDROP)))
+        {
+            const UINT count = std::min(DragQueryFileW(drop, UINT_MAX, nullptr, 0), 32U);
+            for (UINT i = 0; i < count; ++i)
+            {
+                const UINT length = DragQueryFileW(drop, i, nullptr, 0);
+                std::wstring path(length + 1, L'\0');
+                if (DragQueryFileW(drop, i, path.data(), length + 1))
+                {
+                    path.resize(length);
+                    files.push_back(std::move(path));
+                }
+            }
+        }
+        // Device-dependent bitmaps are a last fallback for older clipboard producers.
+        if (encoded.empty() && dibs.empty())
+            if (auto bitmap = static_cast<HBITMAP>(GetClipboardData(CF_BITMAP)))
+            {
+                BITMAP size{};
+                if (GetObjectW(bitmap, sizeof(size), &size) && size.bmWidth > 0 && size.bmHeight > 0)
+                {
+                    auto result = Bitmap::create(size.bmWidth, size.bmHeight);
+                    BITMAPINFO info{};
+                    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+                    info.bmiHeader.biWidth = result.width;
+                    info.bmiHeader.biHeight = -result.height;
+                    info.bmiHeader.biPlanes = 1;
+                    info.bmiHeader.biBitCount = 32;
+                    HDC dc = GetDC(nullptr);
+                    const int rows = dc ? GetDIBits(dc, bitmap, 0, result.height, result.pixels.data(),
+                                                    &info, DIB_RGB_COLORS) : 0;
+                    if (dc) ReleaseDC(nullptr, dc);
+                    if (rows == result.height)
+                    {
+                        for (size_t i = 3; i < result.pixels.size(); i += 4)
+                            result.pixels[i] = 255;
+                        native = std::move(result);
+                    }
+                }
+            }
+    }
+    for (const auto &bytes : encoded)
+        try { return graphics.decode(bytes); }
+        catch (const std::runtime_error &) { }
+    for (const auto &bytes : dibs)
+        if (auto result = clipboardDib(bytes))
+            return result;
+    if (native)
+        return native;
+    for (const auto &path : files)
+    {
+        std::ifstream file(std::filesystem::path(path), std::ios::binary | std::ios::ate);
+        if (!file)
+            continue;
+        const auto size = file.tellg();
+        if (size <= 0 || size > 512000000)
+            continue;
+        std::vector<uint8_t> bytes(static_cast<size_t>(size));
+        file.seekg(0);
+        if (!file.read(reinterpret_cast<char *>(bytes.data()), size))
+            continue;
+        try { return graphics.decode(bytes); }
+        catch (const std::runtime_error &) { }
+    }
+    return std::nullopt;
+}
 bool copyText(HWND owner, const std::wstring &text, ClipboardFailure *failure)
 {
     if (text.empty())

@@ -411,6 +411,51 @@ int wmain()
         loadToolPreferences();
         require(std::abs(app.opacities[static_cast<size_t>(Tool::Arrow)] - .5f) < .02f,
                 "Opacity preferences did not restore independently of annotation undo.");
+        {
+            const auto savedDocument = app.document;
+            const auto savedTool = app.tool;
+            const float savedThickness = app.thickness;
+            app.document.clear();
+            command(styleCommand(Tool::Line, 3));
+            app.thickness = 4;
+            require(app.tool == Tool::Line &&
+                        std::wstring(styleName(Tool::Line, app.styles[5])) == L"Measurement",
+                    "Measurement style could not be activated or named.");
+            auto dragLine = [&](Point from, Point to) {
+                mouseDown(mouse(app.view.toScreen(from)));
+                mouseMove(mouse(app.view.toScreen(to)));
+                mouseUp(mouse(app.view.toScreen(to)));
+            };
+            dragLine({200, 200}, {400, 200});
+            require(app.document.items.size() == 1 && app.document.items[0].style == 3,
+                    "Drawing a measurement line failed.");
+            command(SelectTool);
+            const Point onCap = app.document.items[0].a +
+                                app.document.items[0].measurementCapOffset() * .9f;
+            mouseDown(mouse(app.view.toScreen(onCap)));
+            mouseUp(mouse(app.view.toScreen(onCap)));
+            require(app.document.selected == 0, "Clicking a measurement cap did not select its line.");
+            dragLine({400, 200}, {400, 300});
+            const auto rotated = app.document.items[0];
+            require(length(rotated.b - Point{400, 300}) < 2 &&
+                        rotated.hit(rotated.b + rotated.measurementCapOffset() * .8f, 0),
+                    "Measurement endpoint drag did not rotate its caps.");
+            require(app.document.undo() && length(app.document.items[0].b - Point{400, 200}) < 2,
+                    "Measurement endpoint edit did not undo in one step.");
+            app.document.selected = 0;
+            command(styleCommand(Tool::Line, 0), true);
+            require(app.document.items[0].style == 0 && app.document.undo() &&
+                        app.document.items[0].style == 3,
+                    "Measurement style edit did not undo in place.");
+            command(styleCommand(Tool::Line, 3));
+            require(saveToolPreferences(), "Cannot save measurement style preference.");
+            app.styles[5] = 0;
+            loadToolPreferences();
+            require(app.styles[5] == 3, "Measurement style preference did not restore.");
+            selectTool(savedTool);
+            app.document = savedDocument;
+            app.thickness = savedThickness;
+        }
         const auto layoutExport = renderedExport();
         const auto layoutItems = app.document.items;
         const auto layoutSelection = app.document.selected;
@@ -443,7 +488,7 @@ int wmain()
                        ProfessionalBlur, ProfessionalRounded, SamtecLogo, ToggleActions,
                        ToggleTools, ToggleFormatting, FullScreen, Fit, Actual, NewSnip, InstantSnip,
                        RecentSnips, Copy, Save, SaveAs, Undo, Redo, DeleteSelected, Clear,
-                       CropTool, EraserTool, Exit})
+                       CropImageChoice, SelectPixelsChoice, Paste, EraserTool, Exit})
             require(std::find(panelCommands.begin(), panelCommands.end(), id) != panelCommands.end(),
                     "The modern Settings panel lost an existing option or action.");
         for (int style = 0; style < 6; ++style)

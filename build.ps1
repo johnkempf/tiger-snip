@@ -74,6 +74,11 @@ if ($Test) {
     $taskUIArguments[$taskUIArguments.IndexOf((Join-Path $taskBuild 'autocopy_test.exe'))] = Join-Path $taskBuild 'ui_test.exe'
     & $taskCompiler @taskUIArguments
     if ($LASTEXITCODE -ne 0) { throw 'UI test compilation failed.' }
+    $taskImageArguments = @($taskUIArguments)
+    $taskImageArguments[$taskImageArguments.IndexOf((Join-Path $taskRoot 'tests\ui.cpp'))] = Join-Path $taskRoot 'tests\image_edit.cpp'
+    $taskImageArguments[$taskImageArguments.IndexOf((Join-Path $taskBuild 'ui_test.exe'))] = Join-Path $taskBuild 'image_edit_test.exe'
+    & $taskCompiler @taskImageArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Image editing test compilation failed.' }
     $taskMenuArguments = @($taskUIArguments)
     $taskMenuArguments[$taskMenuArguments.IndexOf((Join-Path $taskRoot 'tests\ui.cpp'))] = Join-Path $taskRoot 'tests\native_menu.cpp'
     $taskMenuArguments[$taskMenuArguments.IndexOf((Join-Path $taskBuild 'ui_test.exe'))] = Join-Path $taskBuild 'native_menu_test.exe'
@@ -110,6 +115,8 @@ if ($Test) {
         if ($LASTEXITCODE -ne 0) { throw 'Text capture test failed.' }
         & (Join-Path $taskBuild 'ui_test.exe')
         if ($LASTEXITCODE -ne 0) { throw 'UI test failed.' }
+        & (Join-Path $taskBuild 'image_edit_test.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Image editing test failed.' }
         & (Join-Path $taskBuild 'native_menu_test.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Native menu frame test failed.' }
         & (Join-Path $taskBuild 'single_instance_test.exe')

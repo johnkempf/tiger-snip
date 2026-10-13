@@ -203,12 +203,13 @@ SettingsPanelLayout settingsPanelLayout()
         row(Actual, SettingsControlKind::Button, L"Actual size (100%)", L"Show one image pixel per screen pixel.", 56);
         break;
     case 5:
-        for (auto [id, label] : std::array<std::pair<int, const wchar_t *>, 15>{
+        for (auto [id, label] : std::array<std::pair<int, const wchar_t *>, 17>{
                  {{NewSnip, L"New snip"},
                   {InstantSnip, L"Capture all monitors"},
                   {TextSnip, L"Copy text from an area"},
                   {RecentSnips, L"Recent snips"},
                   {Copy, L"Copy image"},
+                  {Paste, L"Paste image"},
                   {CopySnipText, L"Copy text from snip"},
                   {Save, L"Save image"},
                   {SaveAs, L"Save as"},
@@ -216,7 +217,8 @@ SettingsPanelLayout settingsPanelLayout()
                   {Redo, L"Redo"},
                   {DeleteSelected, L"Delete selected annotation"},
                   {Clear, L"Clear annotations"},
-                  {CropTool, L"Crop image"},
+                  {CropImageChoice, L"Crop image"},
+                  {SelectPixelsChoice, L"Select area"},
                   {EraserTool, L"Eraser"},
                   {Exit, L"Exit Tiger Snip"}}})
             row(id, SettingsControlKind::Button, label, L"", 42);

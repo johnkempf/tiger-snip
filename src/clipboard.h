@@ -3,6 +3,8 @@
 #include <windows.h>
 namespace snip
 {
+class Graphics;
+std::optional<Bitmap> readClipboardBitmap(HWND owner, Graphics &graphics);
 struct ClipboardFailure
 {
     const char *operation = "Cannot publish the image to the Windows clipboard.";

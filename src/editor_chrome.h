@@ -127,10 +127,11 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                                  : SelectTool + static_cast<int>(inspectorTool());
             drawToolGlyph(rt, brush, tool, {l.panel.left + 18, l.panel.top + 21}, Accent);
             text(app.erasing    ? L"Eraser"
-                 : app.cropping ? L"Crop"
+                 : app.cropping ? (app.cropSelectPreferred ? L"Select area" : L"Crop")
+                 : imageSelected() ? L"Image"
                                 : ToolNames[static_cast<int>(inspectorTool())],
                  {l.panel.left + 48, l.panel.top + 14, l.panel.right - 46, l.panel.top + 48}, Ink);
-            text(selected() ? L"Selected annotation" : L"Tool properties",
+            text(imageSelected() ? L"Selected image" : selected() ? L"Selected annotation" : L"Tool properties",
                  {l.panel.left + 18, l.panel.top + 46, l.panel.right - 18, l.panel.top + 69}, Muted,
                  app.graphics.smallFont.get());
             fill({l.panel.left, l.body.top - 1, l.panel.right, l.body.top}, edge);
@@ -138,12 +139,15 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                                     D2D1_ANTIALIAS_MODE_ALIASED);
             if (app.erasing || app.cropping)
             {
-                text(app.erasing ? L"Erase whole annotations" : L"Choose the area to keep",
+                text(app.erasing ? L"Erase whole annotations" : app.cropSelectPreferred
+                                                               ? L"Choose the area to move"
+                                                               : L"Choose the area to keep",
                      {l.color.left, l.color.top, l.color.right, l.color.top + 32}, Ink);
                 const wchar_t *lines[] = {app.erasing ? L"Click or drag over an annotation."
                                                       : L"Drag a rectangle on the screenshot.",
                                           app.erasing ? L"The screenshot stays untouched."
-                                                      : L"Release to crop the image.",
+                                                      : app.cropSelectPreferred ? L"Moving leaves white behind."
+                                                                                : L"Release to crop the image.",
                                           L"Ctrl+Z restores your changes.",
                                           L"Esc cancels the current action."};
                 for (int i = 0; i < 4; ++i)
@@ -151,6 +155,28 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                          {l.color.left, l.color.top + 44 + i * 28, l.color.right,
                           l.color.top + 72 + i * 28},
                          Muted, app.graphics.smallFont.get());
+            }
+            else if (imageSelected())
+            {
+                const auto r = app.document.items[app.document.selected].bounds();
+                text(L"Move and resize", l.color, Ink);
+                text(std::to_wstring(static_cast<int>(std::round(r.width()))) + L" x " +
+                         std::to_wstring(static_cast<int>(std::round(r.height()))) + L" px",
+                     {l.color.left, l.color.top + 30, l.color.right, l.color.top + 58}, Muted,
+                     app.graphics.smallFont.get());
+                text(L"Opacity", l.opacity, Ink);
+                text(std::to_wstring(static_cast<int>(std::lround(propertyOpacity() * 100))) + L"%",
+                     {l.opacity.right - 54, l.opacity.top, l.opacity.right, l.opacity.bottom}, Ink,
+                     app.graphics.smallFont.get(), true);
+                text(L"Drag the image to place it.",
+                     {l.help.left, l.help.top, l.help.right, l.help.top + 26}, Muted,
+                     app.graphics.smallFont.get());
+                text(L"Drag handles to resize.",
+                     {l.help.left, l.help.top + 30, l.help.right, l.help.top + 56}, Muted,
+                     app.graphics.smallFont.get());
+                text(L"Shift keeps its proportions.",
+                     {l.help.left, l.help.top + 60, l.help.right, l.help.top + 86}, Muted,
+                     app.graphics.smallFont.get());
             }
             else
             {
@@ -324,7 +350,7 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                     true, chosen ? uiSelectedBorder() : edge);
             text(std::to_wstring(px) + L" px", r, fg, app.graphics.smallFont.get(), true);
         }
-        else if (b.command >= CircleStyleMenu && b.command <= LineStyleMenu)
+        else if ((b.command >= CircleStyleMenu && b.command <= LineStyleMenu) || b.command == CropModeMenu)
         {
             if (r.right <= canvas.left)
             {
@@ -436,7 +462,7 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
     }
     // Rail split-menu chevrons sit above their tool's selected surface.
     for (const auto &b : app.buttons)
-        if (b.command >= CircleStyleMenu && b.command <= LineStyleMenu &&
+        if (((b.command >= CircleStyleMenu && b.command <= LineStyleMenu) || b.command == CropModeMenu) &&
             b.rect.right <= canvas.left)
             chevron({(b.rect.left + b.rect.right) / 2, (b.rect.top + b.rect.bottom) / 2},
                     enabled(b.command) ? Muted : Muted);
