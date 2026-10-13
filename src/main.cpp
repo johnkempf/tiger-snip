@@ -127,6 +127,7 @@ enum Command
     CropModeMenu,
     CropImageChoice,
     SelectPixelsChoice,
+    CopySelected,
     SettingsPageFirst = 2100,
     SettingsPageLast = SettingsPageFirst + 6,
     ColorFirst = PaletteFirst,
@@ -352,6 +353,8 @@ struct Application
     size_t tooltipCount = 0;
     unsigned menuDepth = 0;
     bool tooltipSuppressed = false;
+    DWORD annotationPasteSequence = 0;
+    unsigned annotationPasteCount = 0;
     UINT taskbarCreated = 0;
 } app;
 #include "editor_theme.h"
@@ -2052,7 +2055,7 @@ void buildButtons()
                 hint = L"Choose Crop or Select area";
                 break;
             case Copy:
-                hint = L"Copy image with annotations (Ctrl+C)";
+                hint = L"Copy the whole image; Ctrl+C copies a selected annotation";
                 break;
             case Save:
                 hint = L"Save image to the configured folder";
@@ -2219,6 +2222,8 @@ void closeSettingsPanel()
 }
 bool enabled(int id)
 {
+    if (id == CopySelected)
+        return hasImage() && selected();
     if (imageSelected() && (id == CustomColor || id == Eyedropper || paletteCommand(id) ||
                            id == SizeDown || id == SizeUp || id == StrokeSlider ||
                            (id >= StrokePresetFirst && id <= StrokePresetThird)))
@@ -3761,6 +3766,39 @@ void pasteClipboardImage()
 {
     if (!hasImage())
         return;
+    if (auto item = readClipboardAnnotation(app.window, app.graphics))
+    {
+        const DWORD sequence = GetClipboardSequenceNumber();
+        if (sequence != app.annotationPasteSequence)
+        {
+            app.annotationPasteSequence = sequence;
+            app.annotationPasteCount = 0;
+        }
+        const auto bounds = item->bounds();
+        const Rect canvas = canvasRect();
+        const Point first = app.view.toImage({canvas.left, canvas.top});
+        const Point last = app.view.toImage({canvas.right, canvas.bottom});
+        const float left = std::max(0.0f, first.x), top = std::max(0.0f, first.y);
+        const float right = std::min(static_cast<float>(app.image.width), last.x);
+        const float bottom = std::min(static_cast<float>(app.image.height), last.y);
+        const float offset = 24.0f * (1 + app.annotationPasteCount % 10);
+        const Point origin{
+            std::clamp(bounds.left + offset, left, std::max(left, right - bounds.width())),
+            std::clamp(bounds.top + offset, top, std::max(top, bottom - bounds.height()))};
+        item->move(origin - Point{bounds.left, bounds.top});
+        if (item->kind == Tool::Text) app.graphics.measureText(*item);
+        app.document.begin();
+        app.document.items.push_back(std::move(*item));
+        app.document.commit();
+        ++app.annotationPasteCount;
+        selectTool(Tool::Select);
+        app.document.selected = static_cast<int>(app.document.items.size()) - 1;
+        app.dirty = true;
+        updateTitle();
+        repaint();
+        status(L"Annotation pasted - drag to move or use the handles to resize");
+        return;
+    }
     auto pixels = readClipboardBitmap(app.window, app.graphics);
     if (!pixels || pixels->empty())
     {
@@ -4262,6 +4300,24 @@ void copyImage(bool automatic = false)
     status(automatic ? L"Copied automatically - ready to paste; Ctrl+C copies your edits"
                      : L"Copied image and annotations - ready to paste");
 }
+void copySelectedAnnotation()
+{
+    if (!hasImage()) return;
+    if (!selected())
+    {
+        copyImage();
+        return;
+    }
+    ClipboardFailure failure;
+    if (!copyAnnotation(app.window, app.document.items[app.document.selected], app.graphics, &failure))
+    {
+        if (failure.unavailable) status(L"Clipboard is busy. Try Ctrl+C again.");
+        else error(app.window, windowsError(failure.operation, failure.code).c_str());
+        return;
+    }
+    startCopyFeedback(false);
+    status(L"Copied selected annotation - Ctrl+V pastes an editable duplicate");
+}
 void copyRecentSnip(int index)
 {
     if (index < 0 || index >= static_cast<int>(app.recent.size()) || app.capturePending || app.overlay)
@@ -4294,7 +4350,7 @@ HMENU snipActionsMenu(bool shortcuts)
     HMENU menu = CreatePopupMenu();
     if (menu)
     {
-        AppendMenuW(menu, MF_STRING, Copy, shortcuts ? L"&Copy\tCtrl+C" : L"&Copy");
+        AppendMenuW(menu, MF_STRING, Copy, shortcuts ? L"&Copy whole image" : L"&Copy");
         AppendMenuW(menu, MF_STRING, Save, shortcuts ? L"&Save\tCtrl+S" : L"&Save");
         AppendMenuW(menu, MF_STRING, SaveAs,
                     shortcuts ? L"Save &as...\tCtrl+Shift+S" : L"Save &as...");
@@ -4846,7 +4902,7 @@ void command(int id, bool editSelectedStyle)
     if (app.settingsPanelOpen &&
         (id == NewSnip || id == InstantSnip || id == RecentSnips || id == Copy || id == Save ||
          id == SaveAs || id == Undo || id == Redo || id == DeleteSelected || id == Clear ||
-         id == CropTool || id == CropImageChoice || id == SelectPixelsChoice || id == Paste ||
+         id == CropTool || id == CropImageChoice || id == SelectPixelsChoice || id == Paste || id == CopySelected ||
          id == EraserTool || id == FullScreen || id == Fit || id == ToggleFit || id == Actual || id == Exit))
         closeSettingsPanel();
     if (app.sliderDrag)
@@ -5215,6 +5271,9 @@ void command(int id, bool editSelectedStyle)
     case Copy:
         copyImage();
         break;
+    case CopySelected:
+        copySelectedAnnotation();
+        break;
     case TextSnip:
         startSnip(true, false, true);
         break;
@@ -5421,7 +5480,7 @@ void command(int id, bool editSelectedStyle)
         MessageBoxW(app.window,
                     L"Tiger Snip 1.0.2\n\nNative C++ screenshot editor.\nDeveloped by Jack "
                     L"Kempf\n\nCtrl+N: new snip\nCtrl+C: "
-                    L"copy image with annotations\nCtrl+S: Save As\nCtrl+Shift+S: Save As\nCtrl+Z "
+                    L"copy selected annotation or whole image\nCtrl+V: paste\nCtrl+S: Save As\nCtrl+Shift+S: Save As\nCtrl+Z "
                     L"/ Ctrl+Y: undo / redo\nChoose tools from the toolbar; plain letters do not "
                     L"activate tools.\n[ / ]: brush size\nDelete: remove selection\nMouse wheel: "
                     L"zoom from Fit to 800%\nSelect + drag image: pan (also middle-drag or "
@@ -5830,7 +5889,7 @@ HMENU createMenu()
     AppendMenuW(file, MF_STRING, NewSnip, L"&New snip\tCtrl+N");
     AppendMenuW(file, MF_STRING, InstantSnip, L"Capture &all monitors now");
     AppendMenuW(file, MF_STRING, TextSnip, L"Capture &text");
-    AppendMenuW(file, MF_STRING, Copy, L"&Copy image\tCtrl+C");
+    AppendMenuW(file, MF_STRING, Copy, L"&Copy whole image");
     AppendMenuW(file, MF_STRING, CopySnipText, L"Copy text from snip");
     AppendMenuW(file, MF_STRING, Save, L"&Save to current location");
     AppendMenuW(file, MF_STRING, SaveAs, L"Save &As...\tCtrl+S");
@@ -5844,6 +5903,7 @@ HMENU createMenu()
     AppendMenuW(edit, MF_STRING, CropImageChoice, L"&Crop image");
     AppendMenuW(edit, MF_STRING, SelectPixelsChoice, L"Select &area");
     AppendMenuW(edit, MF_STRING, Paste, L"&Paste image\tCtrl+V");
+    AppendMenuW(edit, MF_STRING, CopySelected, L"Copy selected &annotation\tCtrl+C");
     AppendMenuW(edit, MF_STRING, EraserTool, L"&Eraser");
     AppendMenuW(view, MF_STRING, Fit, L"&Fit image");
     AppendMenuW(view, MF_STRING, Actual, L"&Actual size (100%)");
@@ -5970,6 +6030,7 @@ void updateMenus()
     enable(Undo, app.document.canUndo());
     enable(Redo, app.document.canRedo());
     enable(DeleteSelected, selected());
+    enable(CopySelected, selected() && hasImage());
     enable(RecentSnips, enabled(RecentSnips));
     enable(Clear, !app.document.items.empty());
     CheckMenuItem(menu, Startup, MF_BYCOMMAND | (startupEnabled() ? MF_CHECKED : MF_UNCHECKED));
@@ -6186,7 +6247,7 @@ void processKey(WPARAM key, LPARAM info = 0)
                 command(RecentSnips);
             break;
         case 'C':
-            command(Copy);
+            command(CopySelected);
             break;
         case 'V':
             command(Paste);

@@ -405,6 +405,42 @@ static Com<IWICImagingFactory> wicFactory()
           "Cannot initialize Windows image encoding.");
     return wic;
 }
+Bitmap Graphics::annotationImage(const Annotation &item)
+{
+    initialize();
+    const auto bounds = item.bounds();
+    const float margin = item.raster ? 0 : item.kind == Tool::Highlight ? 2 :
+        item.kind == Tool::Text ? 2 : item.thickness / 2 + 2 +
+        (item.kind == Tool::Arrow && item.style == 0 ? std::max(12.0f, item.thickness * 3) : 0);
+    const float left = std::floor(bounds.left - margin), top = std::floor(bounds.top - margin);
+    auto result = Bitmap::create(std::max(1, static_cast<int>(std::ceil(bounds.right + margin) - left)),
+                                 std::max(1, static_cast<int>(std::ceil(bounds.bottom + margin) - top)));
+    auto wic = wicFactory();
+    Com<IWICBitmap> bitmap;
+    check(wic->CreateBitmap(result.width, result.height, GUID_WICPixelFormat32bppPBGRA,
+                           WICBitmapCacheOnLoad, bitmap.put()), "Cannot create annotation image.");
+    Com<ID2D1RenderTarget> rt;
+    const auto properties = D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED), 96, 96);
+    check(factory->CreateWicBitmapRenderTarget(bitmap.get(), properties, rt.put()),
+          "Cannot render annotation image.");
+    auto local = item;
+    local.move({-left, -top});
+    rt->BeginDraw();
+    rt->Clear(D2D1::ColorF(0, 0, 0, 0));
+    drawAnnotations(rt.get(), {local});
+    check(rt->EndDraw(), "Cannot finish annotation image.");
+    check(bitmap->CopyPixels(nullptr, result.width * 4, static_cast<UINT>(result.pixels.size()),
+                             result.pixels.data()), "Cannot read annotation image.");
+    // Clipboard PNG/DIBV5 pixels use straight alpha; the render target produces premultiplied pixels.
+    for (size_t i = 0; i < result.pixels.size(); i += 4)
+        for (int c = 0; c < 3; ++c)
+            result.pixels[i + c] = result.pixels[i + 3]
+                ? static_cast<uint8_t>(std::min(255U, (result.pixels[i + c] * 255U +
+                                                      result.pixels[i + 3] / 2U) / result.pixels[i + 3]))
+                : 0;
+    return result;
+}
 Bitmap Graphics::flatten(const Bitmap &image, const std::vector<Annotation> &items, int editingText)
 {
     if (image.empty())

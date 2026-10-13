@@ -13,6 +13,121 @@ namespace snip
 {
 namespace
 {
+constexpr uint32_t AnnotationMagic = 0x4e415354;
+std::vector<uint8_t> encodeAnnotation(const Annotation &item, Graphics &graphics)
+{
+    std::vector<uint8_t> bytes;
+    auto put = [&](auto value) {
+        const auto *data = reinterpret_cast<const uint8_t *>(&value);
+        bytes.insert(bytes.end(), data, data + sizeof(value));
+    };
+    auto point = [&](Point p) { put(p.x); put(p.y); };
+    put(AnnotationMagic); put(uint32_t{1}); put(uint32_t{0});
+    put(static_cast<uint32_t>(item.kind)); put(item.color); put(uint32_t{item.style});
+    const uint32_t flags = item.bold | (item.boxed << 1) | (item.textFrame << 2) |
+                           (item.curveFlipped << 3) | (static_cast<bool>(item.raster) << 4);
+    put(flags); put(item.thickness); put(item.opacity); point(item.a); point(item.b);
+    put(item.fontSize); put(item.textWidth); put(item.textHeight);
+    put(static_cast<uint32_t>(item.points.size()));
+    for (Point p : item.points) point(p);
+    put(static_cast<uint32_t>(item.text.size()));
+    const auto *text = reinterpret_cast<const uint8_t *>(item.text.data());
+    bytes.insert(bytes.end(), text, text + item.text.size() * sizeof(wchar_t));
+    put(static_cast<uint32_t>(item.cutouts.size()));
+    for (Rect r : item.cutouts) { put(r.left); put(r.top); put(r.right); put(r.bottom); }
+    const auto png = item.raster ? graphics.png(*item.raster) : std::vector<uint8_t>{};
+    put(static_cast<uint32_t>(png.size()));
+    bytes.insert(bytes.end(), png.begin(), png.end());
+    const auto size = static_cast<uint32_t>(bytes.size());
+    std::memcpy(bytes.data() + 8, &size, sizeof(size));
+    return bytes;
+}
+struct AnnotationReader
+{
+    const uint8_t *data;
+    size_t remaining;
+    const uint8_t *take(size_t size)
+    {
+        if (size > remaining) throw std::runtime_error("Truncated annotation clipboard data.");
+        const auto *result = data;
+        data += size;
+        remaining -= size;
+        return result;
+    }
+    template<class T> T get()
+    {
+        T value;
+        std::memcpy(&value, take(sizeof(value)), sizeof(value));
+        return value;
+    }
+    float number()
+    {
+        const auto value = get<float>();
+        if (!std::isfinite(value) || std::abs(value) > 10000000)
+            throw std::runtime_error("Invalid annotation coordinates.");
+        return value;
+    }
+    Point point() { return {number(), number()}; }
+    uint32_t count(uint32_t maximum, size_t elementSize)
+    {
+        const auto count = get<uint32_t>();
+        if (count > maximum || count > remaining / elementSize)
+            throw std::runtime_error("Invalid annotation clipboard size.");
+        return count;
+    }
+};
+std::optional<Annotation> decodeAnnotation(const std::vector<uint8_t> &bytes, Graphics &graphics)
+{
+    try
+    {
+        AnnotationReader r{bytes.data(), bytes.size()};
+        if (r.get<uint32_t>() != AnnotationMagic || r.get<uint32_t>() != 1) return std::nullopt;
+        const auto size = r.get<uint32_t>();
+        if (size < 12 || size > bytes.size()) return std::nullopt;
+        r.remaining = size - 12; // GlobalAlloc may pad the clipboard allocation.
+        Annotation item;
+        const auto kind = r.get<uint32_t>();
+        constexpr uint32_t styles[] = {1, 1, 3, 5, 6, 4, 4, 1, 1};
+        if (kind >= std::size(styles)) return std::nullopt;
+        item.kind = static_cast<Tool>(kind);
+        item.color = r.get<uint32_t>();
+        const auto style = r.get<uint32_t>(), flags = r.get<uint32_t>();
+        if (item.color > 0xffffff || style >= styles[kind] || flags > 31) return std::nullopt;
+        item.style = static_cast<uint8_t>(style);
+        item.bold = flags & 1; item.boxed = flags & 2; item.textFrame = flags & 4;
+        item.curveFlipped = flags & 8;
+        item.thickness = r.number(); item.opacity = r.number(); item.a = r.point(); item.b = r.point();
+        item.fontSize = r.number(); item.textWidth = r.number(); item.textHeight = r.number();
+        if (item.thickness < 0 || item.thickness > 10000 || item.opacity < 0 || item.opacity > 1 ||
+            item.fontSize < 8 || item.fontSize > 144 || item.textWidth <= 0 || item.textHeight < 0)
+            return std::nullopt;
+        const auto points = r.count(1000000, sizeof(float) * 2);
+        item.points.reserve(points);
+        for (uint32_t i = 0; i < points; ++i) item.points.push_back(r.point());
+        const auto length = r.count(1000000, sizeof(wchar_t));
+        item.text.resize(length);
+        std::memcpy(item.text.data(), r.take(length * sizeof(wchar_t)), length * sizeof(wchar_t));
+        const auto cuts = r.count(10000, sizeof(float) * 4);
+        for (uint32_t i = 0; i < cuts; ++i)
+        {
+            const Rect cut{r.number(), r.number(), r.number(), r.number()};
+            if (cut.width() < 0 || cut.height() < 0) return std::nullopt;
+            item.cutouts.push_back(cut);
+        }
+        const auto pngSize = r.count(512000000, 1);
+        if (static_cast<bool>(flags & 16) != (pngSize > 0) ||
+            (item.kind == Tool::Select) != (pngSize > 0)) return std::nullopt;
+        if (pngSize)
+        {
+            const auto *png = r.take(pngSize);
+            item.raster = std::make_shared<const Bitmap>(graphics.decode({png, png + pngSize}));
+        }
+        if (r.remaining || ((item.kind == Tool::Pen || item.kind == Tool::Highlight) && item.points.empty()))
+            return std::nullopt;
+        return item;
+    }
+    catch (const std::runtime_error &) { return std::nullopt; }
+}
 std::optional<Bitmap> clipboardDib(const std::vector<uint8_t> &bytes)
 {
     if (bytes.size() < sizeof(BITMAPINFOHEADER))
@@ -82,6 +197,30 @@ std::optional<Bitmap> clipboardDib(const std::vector<uint8_t> &bytes)
     }
     return result;
 }
+}
+std::optional<Annotation> readClipboardAnnotation(HWND owner, Graphics &graphics)
+{
+    std::vector<uint8_t> bytes;
+    {
+        if (!OpenClipboard(owner)) throwWindowsError("The clipboard is busy. Try pasting again.");
+        struct Close { ~Close() { CloseClipboard(); } } close;
+        HANDLE memory = GetClipboardData(RegisterClipboardFormatW(AnnotationClipboardFormat));
+        const size_t size = memory ? GlobalSize(memory) : 0;
+        if (!size || size > 512000000) return std::nullopt;
+        const auto *data = static_cast<const uint8_t *>(GlobalLock(memory));
+        if (!data) return std::nullopt;
+        try { bytes.assign(data, data + size); }
+        catch (...) { GlobalUnlock(memory); throw; }
+        GlobalUnlock(memory);
+    }
+    return decodeAnnotation(bytes, graphics);
+}
+bool copyAnnotation(HWND owner, const Annotation &item, Graphics &graphics, ClipboardFailure *failure)
+{
+    if (item.whiteout) return false;
+    const auto metadata = encodeAnnotation(item, graphics);
+    const auto image = graphics.annotationImage(item);
+    return copyBitmap(owner, image, graphics.png(image), failure, metadata);
 }
 std::optional<Bitmap> readClipboardBitmap(HWND owner, Graphics &graphics)
 {
@@ -214,7 +353,7 @@ bool copyText(HWND owner, const std::wstring &text, ClipboardFailure *failure)
 }
 
 bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &png,
-                ClipboardFailure *failure)
+                ClipboardFailure *failure, const std::vector<uint8_t> &annotation)
 {
     const size_t imageSize = bitmap.pixels.size();
     auto allocate = [&](const void *header, size_t headerSize, const uint8_t *pixels,
@@ -258,8 +397,9 @@ bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &pn
     dib.biSizeImage = static_cast<DWORD>(imageSize);
     HGLOBAL hV5 = allocate(&v5, sizeof(v5), bitmap.pixels.data(), imageSize),
             hDib = allocate(&dib, sizeof(dib), bitmap.pixels.data(), imageSize),
-            hPng = allocate(nullptr, 0, png.data(), png.size());
-    if (!hV5 || !hDib || !hPng)
+            hPng = allocate(nullptr, 0, png.data(), png.size()),
+            hAnnotation = annotation.empty() ? nullptr : allocate(nullptr, 0, annotation.data(), annotation.size());
+    if (!hV5 || !hDib || !hPng || (!annotation.empty() && !hAnnotation))
     {
         if (hV5)
             GlobalFree(hV5);
@@ -267,6 +407,7 @@ bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &pn
             GlobalFree(hDib);
         if (hPng)
             GlobalFree(hPng);
+        if (hAnnotation) GlobalFree(hAnnotation);
         throw std::runtime_error("Not enough memory to copy the image.");
     }
     UINT pngFormat = RegisterClipboardFormatW(L"PNG");
@@ -278,6 +419,7 @@ bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &pn
         GlobalFree(hV5);
         GlobalFree(hDib);
         GlobalFree(hPng);
+        if (hAnnotation) GlobalFree(hAnnotation);
         return false;
     }
     if (!EmptyClipboard())
@@ -288,6 +430,7 @@ bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &pn
         GlobalFree(hV5);
         GlobalFree(hDib);
         GlobalFree(hPng);
+        if (hAnnotation) GlobalFree(hAnnotation);
         return false;
     }
     bool success = false;
@@ -307,6 +450,16 @@ bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &pn
         hDib = nullptr;
         success = true;
     }
+    if (hAnnotation)
+    {
+        if (SetClipboardData(RegisterClipboardFormatW(AnnotationClipboardFormat), hAnnotation))
+            hAnnotation = nullptr;
+        else
+        {
+            success = false;
+            if (failure) failure->operation = "Cannot copy the editable annotation.";
+        }
+    }
     if (!success && failure)
         failure->code = GetLastError();
     CloseClipboard();
@@ -316,6 +469,7 @@ bool copyBitmap(HWND owner, const Bitmap &bitmap, const std::vector<uint8_t> &pn
         GlobalFree(hDib);
     if (hPng)
         GlobalFree(hPng);
+    if (hAnnotation) GlobalFree(hAnnotation);
     return success;
 }
 } // namespace snip

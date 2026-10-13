@@ -278,6 +278,116 @@ int wmain()
         require(app.document.items.size() == 2 && app.document.undo() && app.document.items.size() == 1 &&
                     app.document.undo() && app.document.items.empty() && app.document.redo(),
                 "Repeated image pasting did not support independent undo and redo.");
+        auto shortcut = [&](WPARAM key) {
+            require(SetKeyboardState(ctrl), "Cannot simulate clipboard shortcut.");
+            processKey(key);
+            SetKeyboardState(keyboard);
+        };
+        app.document.clear();
+        Annotation arrow;
+        arrow.kind = Tool::Arrow;
+        arrow.style = 2;
+        arrow.curveFlipped = true;
+        arrow.thickness = 6;
+        arrow.opacity = .5f;
+        arrow.color = rgb(20, 180, 80);
+        arrow.a = {80, 80};
+        arrow.b = {220, 140};
+        arrow.cutouts = {{100, 95, 120, 110}};
+        app.document.items = {arrow};
+        app.document.selected = 0;
+        app.dirty = true;
+        const auto copyView = app.view;
+        const auto toolStyles = app.styles;
+        shortcut('C');
+        const auto editable = readClipboardAnnotation(app.window, app.graphics);
+        const auto transparent = readClipboardBitmap(app.window, app.graphics);
+        require(editable && *editable == arrow && transparent && transparent->width < app.image.width &&
+                    transparent->height < app.image.height && transparent->pixels[3] == 0 &&
+                    app.document.items == std::vector<Annotation>{arrow} && app.document.selected == 0 &&
+                    app.dirty && app.view.origin == copyView.origin && app.view.scale == copyView.scale,
+                "Ctrl+C did not copy only the annotation or changed the document.");
+        // The clipboard contains a snapshot, independent of subsequent source edits.
+        app.document.items[0].color = rgb(200, 0, 0);
+        shortcut('V');
+        auto expected = arrow;
+        expected.move({24, 24});
+        require(app.document.items.size() == 2 && app.document.items.back() == expected &&
+                    app.document.selected == 1 && app.styles == toolStyles,
+                "Ctrl+V lost editable arrow geometry, style, cutouts, opacity or color.");
+        shortcut('V');
+        expected = arrow;
+        expected.move({48, 48});
+        require(app.document.items.back() == expected && app.document.undo() &&
+                    app.document.items.size() == 2 && app.document.redo() && app.document.items.size() == 3,
+                "Repeated annotation paste or its undo/redo failed.");
+        app.document.selected = 2;
+        const auto endpoint = app.document.items.back().b;
+        drag(endpoint, endpoint + Point{40, 30});
+        require(app.document.items.back().kind == Tool::Arrow &&
+                    length(app.document.items.back().b - endpoint - Point{40, 30}) < 2 &&
+                    app.document.undo(), "Pasted arrow was not editable through its endpoint handles.");
+        app.document.selected = 1;
+        const auto whole = renderedExport();
+        command(Copy); // Toolbar/context Copy always publishes the whole image, even with a selection.
+        const auto wholeClipboard = readClipboardBitmap(app.window, app.graphics);
+        require(wholeClipboard && wholeClipboard->pixels == whole.pixels &&
+                    !readClipboardAnnotation(app.window, app.graphics),
+                "Toolbar Copy retained the annotation payload or omitted screenshot pixels.");
+        shortcut('V');
+        require(imageSelected() && app.document.items.back().raster->pixels == whole.pixels,
+                "Whole-image clipboard data incorrectly pasted a stale annotation.");
+        command(SelectTool);
+        shortcut('C');
+        const auto noSelection = readClipboardBitmap(app.window, app.graphics);
+        require(noSelection && noSelection->pixels == renderedExport().pixels &&
+                    !readClipboardAnnotation(app.window, app.graphics),
+                "Ctrl+C with no selection did not copy the entire screenshot.");
+        Annotation text;
+        text.kind = Tool::Text;
+        text.text = L"Dimension: \u00b10.05\nKeep editable";
+        text.fontSize = 30;
+        text.bold = text.boxed = text.textFrame = true;
+        text.textWidth = 240;
+        text.textHeight = 70;
+        text.a = {60, 190};
+        app.graphics.measureText(text);
+        app.document.clear();
+        app.document.items = {text};
+        app.document.selected = 0;
+        shortcut('C');
+        shortcut('V');
+        expected = text;
+        expected.move({24, 24});
+        require(app.document.items.back() == expected,
+                "Copied text lost its Unicode content, font, bold, box or text frame.");
+        for (Tool kind : {Tool::Pen, Tool::Highlight, Tool::Circle, Tool::Rectangle, Tool::Check, Tool::Line})
+        {
+            Annotation item;
+            item.kind = kind;
+            item.a = {40, 40};
+            item.b = {180, 120};
+            item.points = {{40, 40}, {100, 80}, {180, 120}};
+            item.style = kind == Tool::Line ? 3 : 0;
+            require(copyAnnotation(app.window, item, app.graphics), "Cannot copy annotation type.");
+            const auto restored = readClipboardAnnotation(app.window, app.graphics);
+            require(restored && *restored == item, "Annotation type did not round-trip as editable data.");
+        }
+        const auto raster = rasterPiece(png, {260, 200, 292, 224});
+        app.document.clear();
+        app.document.items = {raster};
+        app.document.selected = 0;
+        shortcut('C');
+        shortcut('V');
+        require(imageSelected() && app.document.items.size() == 2 &&
+                    app.document.items.back().raster->pixels == png.pixels &&
+                    !app.document.items.back().whiteout && app.document.items.back().a == Point{284, 224},
+                "Copying an image piece lost transparency, created a white hole, or lost placement.");
+        publish(RegisterClipboardFormatW(AnnotationClipboardFormat), {1, 2, 3, 4});
+        const auto beforeInvalid = app.document.items;
+        command(Paste);
+        require(!readClipboardAnnotation(app.window, app.graphics) && app.document.items == beforeInvalid,
+                "Malformed annotation clipboard data modified the document.");
         require(copyText(app.window, L"ordinary text"), "Cannot prepare text-only clipboard.");
         const auto unchanged = app.document.items;
         command(Paste);
@@ -335,6 +445,8 @@ int wmain()
         command(Exit);
         std::cout << "PASS: both Crop dropdowns; rectangular lifting including annotations, white source, "
                      "move/corner/side resize/cancel/undo/redo/crop/export at 100/150/200% DPI in both layouts; "
+                     "Ctrl+C selected editable annotations / whole image with no selection, toolbar whole-image copy, "
+                     "transparent previews, editable paste/offset/undo/redo, all annotation types and Unicode text; "
                      "Ctrl+V PNG alpha, repeated paste, text-only no-op, DIBV5 alpha, bottom-up 24-bit DIB, "
                      "truncated DIB rejection and Explorer file paste. User clipboard untouched.\n";
     }

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "builtAtUtc": "2026-10-13T15:47:08Z",
-  "sourceBaseCommit": "089ace69697f75a1676ef8687ee5f88b64b7ef9a",
+  "builtAtUtc": "2026-10-13T17:28:49Z",
+  "sourceBaseCommit": "d496b6d23a12b13b3988b625c87f5d8d1be9be62",
   "workingTreeHasUncommittedChanges": true,
   "compilerVersion": [
     "clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)",
@@ -79,7 +79,7 @@
   "powershellVersion": "7.6.5",
   "output": {
     "name": "Tiger Snip.exe",
-    "sha256": "C0DCC86F608155EB213483997A4405174D700C61208D80642308CAC994904E61"
+    "sha256": "456D80EF7AF14BD1FDDC139C12C53719BEA166E71A95F7A54B89B3643C1F5F76"
   },
   "inputs": [
     {
@@ -168,11 +168,11 @@
     },
     {
       "path": "src\\clipboard.cpp",
-      "sha256": "46291002A3550FEA352E6F42AA20CB585AE4A59935C504967C605B393CF636FB"
+      "sha256": "2D50C55DFC8B619BAEEF930D38674969FB3F6EB9885C26F9E58AC2DB21701BC7"
     },
     {
       "path": "src\\clipboard.h",
-      "sha256": "ADE93BEA47BBB699F7299728B60C6C729D4E4E0B735E4AE7B5E5D1380A37E507"
+      "sha256": "52BDD5959DA9FB6D14FCBBCD52B7A71E10D4B7D5ABE2FAE17B61A2D27710F3FC"
     },
     {
       "path": "src\\color_picker.cpp",
@@ -224,15 +224,15 @@
     },
     {
       "path": "src\\graphics.cpp",
-      "sha256": "34D1E3CDDA3C44444634997F0B78DCCAE5524FC7EF6275F2CFBD0DA8A30AD3C3"
+      "sha256": "852AE3CDBA88B41E01921301A05C47AA81A3E7892D9439C706DBD4E1A5A55C86"
     },
     {
       "path": "src\\graphics.h",
-      "sha256": "BEC4AC0597657F1F32467AF2C0825299323AE431EDFE911F8B19C3B1D94F73A9"
+      "sha256": "78265BD7845C22B143FD4E7FC42E028713F7278DBF86A4E999E55CB8402D6B59"
     },
     {
       "path": "src\\main.cpp",
-      "sha256": "CD62D97CACEFBBECC886191E1A2D776461878855155B82CE09F9557F2F4A1566"
+      "sha256": "1FF86276EC6EADA6EAA70DB472C5E949C7B6684F51924707646EA7291DF5B512"
     },
     {
       "path": "src\\model.cpp",
@@ -396,7 +396,7 @@
     },
     {
       "path": "tests\\image_edit.cpp",
-      "sha256": "5E99FC22EDA129668CB8EE84C1A2EB71E67F1D8E9DF9BD9344C98A448A55ADCF"
+      "sha256": "8C60D2E3A9C31CE5838AC2B642C3C39004CE9F48402D65F72E4714A73B48D413"
     },
     {
       "path": "tests\\native_menu.cpp",

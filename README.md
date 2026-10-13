@@ -26,7 +26,7 @@ Saved selections of the retired Orange preset switch to Purple; saved custom col
 
 ## Use
 
-Click **New snip** and drag a rectangle. Add annotations, then press **Ctrl+C** to copy or **Ctrl+S** to save. See [Quick Start](dist/Quick%20Start.txt) for the controls.
+Click **New snip** and drag a rectangle. **Ctrl+C** copies a selected annotation; **Ctrl+V** pastes an editable duplicate. With nothing selected, **Ctrl+C** copies the whole image. The toolbar **Copy** button always copies the whole image. Press **Ctrl+S** to save. See [Quick Start](dist/Quick%20Start.txt) for the controls.
 **Ctrl+S**, **Ctrl+Shift+S**, and the top-right **Save as** button always open the modern
 Windows save picker, even after you have saved the snip. It starts in your current
 **Settings → General → Save location**, so you can choose another folder for each copy.
