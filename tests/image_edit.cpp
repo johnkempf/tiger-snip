@@ -347,6 +347,7 @@ int wmain()
         text.kind = Tool::Text;
         text.text = L"Dimension: \u00b10.05\nKeep editable";
         text.fontSize = 30;
+        text.textAlignment = TextAlignment::Right;
         text.bold = text.boxed = text.textFrame = true;
         text.textWidth = 240;
         text.textHeight = 70;
@@ -368,11 +369,52 @@ int wmain()
             item.a = {40, 40};
             item.b = {180, 120};
             item.points = {{40, 40}, {100, 80}, {180, 120}};
-            item.style = kind == Tool::Line ? 3 : 0;
+            item.style = kind == Tool::Line ? 3 : kind == Tool::Rectangle ? 4 : 0;
             require(copyAnnotation(app.window, item, app.graphics), "Cannot copy annotation type.");
             const auto restored = readClipboardAnnotation(app.window, app.graphics);
             require(restored && *restored == item, "Annotation type did not round-trip as editable data.");
         }
+        app.document.clear();
+        app.image = original;
+        app.exportOptions = {};
+        Annotation glass;
+        glass.kind = Tool::Rectangle;
+        glass.style = 4;
+        glass.a = {60, 40}; glass.b = {260, 180};
+        app.document.items = {glass};
+        app.document.selected = 0;
+        shortcut('C');
+        const auto glassPreview = readClipboardBitmap(app.window, app.graphics);
+        const auto glassMetadata = readClipboardAnnotation(app.window, app.graphics);
+        require(glassPreview && glassPreview->pixels == app.graphics.annotationImage(glass, &original).pixels &&
+                    glassPreview->pixels[3] == 0 && glassMetadata && *glassMetadata == glass,
+                "Selected glass copy lost the blurred backdrop, rounded alpha, or editable effect.");
+        shortcut('V');
+        require(app.document.items.size() == 2 && app.document.items.back().redaction() &&
+                    !app.document.items.back().raster && app.document.items.back().a == Point{84, 64},
+                "Pasted glass was flattened instead of remaining an editable backdrop effect.");
+        // Version 1 annotations remain readable; unsupported alignment flags are rejected.
+        Annotation legacy = text;
+        legacy.textAlignment = TextAlignment::Left;
+        require(copyAnnotation(app.window, legacy, app.graphics), "Cannot prepare legacy annotation.");
+        require(OpenClipboard(app.window), "Cannot inspect annotation clipboard.");
+        const auto legacyMemory = GetClipboardData(RegisterClipboardFormatW(AnnotationClipboardFormat));
+        const auto legacySize = GlobalSize(legacyMemory);
+        const auto *legacyData = static_cast<const uint8_t *>(GlobalLock(legacyMemory));
+        require(legacyData && legacySize >= 28, "Missing editable clipboard payload.");
+        std::vector<uint8_t> legacyBytes(legacyData, legacyData + legacySize);
+        GlobalUnlock(legacyMemory);
+        CloseClipboard();
+        const uint32_t version1 = 1;
+        std::memcpy(legacyBytes.data() + 4, &version1, sizeof(version1));
+        publish(RegisterClipboardFormatW(AnnotationClipboardFormat), legacyBytes);
+        const auto oldAnnotation = readClipboardAnnotation(app.window, app.graphics);
+        require(oldAnnotation && *oldAnnotation == legacy, "Legacy clipboard annotations no longer paste.");
+        const uint32_t version2 = 2, invalidAlignment = 3U << 5;
+        std::memcpy(legacyBytes.data() + 4, &version2, sizeof(version2));
+        std::memcpy(legacyBytes.data() + 24, &invalidAlignment, sizeof(invalidAlignment));
+        publish(RegisterClipboardFormatW(AnnotationClipboardFormat), legacyBytes);
+        require(!readClipboardAnnotation(app.window, app.graphics), "Invalid text alignment was accepted.");
         const auto raster = rasterPiece(png, {260, 200, 292, 224});
         app.document.clear();
         app.document.items = {raster};

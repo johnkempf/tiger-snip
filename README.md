@@ -5,6 +5,8 @@ Tiger Snip is a local Windows screenshot and annotation tool. Capture an area or
 ## Features
 
 - Pen, highlight, text, shapes, arrows, checks, and lines.
+- Shapes includes **Redaction**: soft backdrop blur with rounded, feathered edges that blend gradually into light or dark content.
+- Text supports **Left**, **Center**, and **Right** alignment, including editable text boxes.
 - Solid, dashed, dotted, and measurement lines with perpendicular end caps (`|-----|`).
 - Crop, undo/redo, zoom, and ten recent editable captures.
 - Crop dropdown with **Select area**: lift screenshot pixels and annotations, move or resize them, and leave white behind.

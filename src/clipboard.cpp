@@ -22,10 +22,11 @@ std::vector<uint8_t> encodeAnnotation(const Annotation &item, Graphics &graphics
         bytes.insert(bytes.end(), data, data + sizeof(value));
     };
     auto point = [&](Point p) { put(p.x); put(p.y); };
-    put(AnnotationMagic); put(uint32_t{1}); put(uint32_t{0});
+    put(AnnotationMagic); put(uint32_t{2}); put(uint32_t{0});
     put(static_cast<uint32_t>(item.kind)); put(item.color); put(uint32_t{item.style});
     const uint32_t flags = item.bold | (item.boxed << 1) | (item.textFrame << 2) |
-                           (item.curveFlipped << 3) | (static_cast<bool>(item.raster) << 4);
+                           (item.curveFlipped << 3) | (static_cast<bool>(item.raster) << 4) |
+                           (static_cast<uint32_t>(item.textAlignment) << 5);
     put(flags); put(item.thickness); put(item.opacity); point(item.a); point(item.b);
     put(item.fontSize); put(item.textWidth); put(item.textHeight);
     put(static_cast<uint32_t>(item.points.size()));
@@ -81,18 +82,22 @@ std::optional<Annotation> decodeAnnotation(const std::vector<uint8_t> &bytes, Gr
     try
     {
         AnnotationReader r{bytes.data(), bytes.size()};
-        if (r.get<uint32_t>() != AnnotationMagic || r.get<uint32_t>() != 1) return std::nullopt;
+        if (r.get<uint32_t>() != AnnotationMagic) return std::nullopt;
+        const auto version = r.get<uint32_t>();
+        if (version != 1 && version != 2) return std::nullopt;
         const auto size = r.get<uint32_t>();
         if (size < 12 || size > bytes.size()) return std::nullopt;
         r.remaining = size - 12; // GlobalAlloc may pad the clipboard allocation.
         Annotation item;
         const auto kind = r.get<uint32_t>();
-        constexpr uint32_t styles[] = {1, 1, 3, 5, 6, 4, 4, 1, 1};
+        constexpr uint32_t styles[] = {1, 1, 3, 5, 6, 4, 5, 1, 1};
         if (kind >= std::size(styles)) return std::nullopt;
         item.kind = static_cast<Tool>(kind);
         item.color = r.get<uint32_t>();
         const auto style = r.get<uint32_t>(), flags = r.get<uint32_t>();
-        if (item.color > 0xffffff || style >= styles[kind] || flags > 31) return std::nullopt;
+        if (item.color > 0xffffff || style >= styles[kind] ||
+            (version == 1 ? flags > 31 : (flags > 127 || (flags >> 5) > 2))) return std::nullopt;
+        item.textAlignment = static_cast<TextAlignment>(flags >> 5);
         item.style = static_cast<uint8_t>(style);
         item.bold = flags & 1; item.boxed = flags & 2; item.textFrame = flags & 4;
         item.curveFlipped = flags & 8;
@@ -215,11 +220,12 @@ std::optional<Annotation> readClipboardAnnotation(HWND owner, Graphics &graphics
     }
     return decodeAnnotation(bytes, graphics);
 }
-bool copyAnnotation(HWND owner, const Annotation &item, Graphics &graphics, ClipboardFailure *failure)
+bool copyAnnotation(HWND owner, const Annotation &item, Graphics &graphics, ClipboardFailure *failure,
+                    const Bitmap *backdrop)
 {
     if (item.whiteout) return false;
     const auto metadata = encodeAnnotation(item, graphics);
-    const auto image = graphics.annotationImage(item);
+    const auto image = graphics.annotationImage(item, backdrop);
     return copyBitmap(owner, image, graphics.png(image), failure, metadata);
 }
 std::optional<Bitmap> readClipboardBitmap(HWND owner, Graphics &graphics)

@@ -128,6 +128,9 @@ enum Command
     CropImageChoice,
     SelectPixelsChoice,
     CopySelected,
+    TextAlignLeft,
+    TextAlignCenter,
+    TextAlignRight,
     SettingsPageFirst = 2100,
     SettingsPageLast = SettingsPageFirst + 6,
     ColorFirst = PaletteFirst,
@@ -148,7 +151,7 @@ constexpr const wchar_t *LogoStyleNames[] = {
 const std::array<Color, 8> Palette = {rgb(239, 68, 68),   rgb(249, 115, 22), rgb(250, 204, 21),
                                       rgb(34, 197, 94),   rgb(14, 165, 233), rgb(168, 85, 247),
                                       rgb(255, 255, 255), rgb(15, 23, 42)};
-constexpr std::array<uint8_t, 9> StyleCounts = {1, 1, 3, 5, 6, 4, 4, 1, 1};
+constexpr std::array<uint8_t, 9> StyleCounts = {1, 1, 3, 5, 6, 4, 5, 1, 1};
 constexpr int StyleChoiceStride = 8;
 constexpr const wchar_t *ToolNames[] = {L"Select", L"Pen",       L"Circle", L"Arrow",    L"Check",
                                         L"Line",   L"Rectangle", L"Text",   L"Highlight"};
@@ -168,6 +171,10 @@ constexpr int styleCommand(Tool tool, int style)
 {
     return StyleChoiceFirst +
            (static_cast<int>(tool) - static_cast<int>(Tool::Circle)) * StyleChoiceStride + style;
+}
+bool textAlignmentCommand(int id)
+{
+    return id >= TextAlignLeft && id <= TextAlignRight;
 }
 struct Button
 {
@@ -280,6 +287,7 @@ struct Application
     Tool geometryTool = Tool::Circle;
     float fontSize = 24;
     bool textBold = false, textBox = false;
+    TextAlignment textAlignment = TextAlignment::Left;
     float thickness = 4, highlightWidth = 24, dpi = 1;
     View view;
     Rect viewViewport;
@@ -472,7 +480,7 @@ Rect clientDips()
 }
 int paletteColumns()
 {
-    return std::max(2, static_cast<int>((clientDips().right - 70 - 64 - 264 - 140 - 30) / 34));
+    return std::max(2, static_cast<int>((clientDips().right - 70 - 64 - 366 - 140 - 30) / 34));
 }
 float rowHeight(int row)
 {
@@ -550,6 +558,9 @@ bool updateTextPreview(int editingText)
     const auto &after = app.document.items[editingText];
     if (before.kind != Tool::Text || after.kind != Tool::Text)
         return false;
+    // A changed text box can affect blurred pixels beyond the box's own bounds.
+    for (size_t i = static_cast<size_t>(editingText) + 1; i < app.document.items.size(); ++i)
+        if (app.document.items[i].redaction()) return false;
     if (!before.boxed && !after.boxed)
         return true;
     const auto oldBounds = before.bounds(), newBounds = after.bounds();
@@ -716,6 +727,8 @@ void loadToolPreferences()
         preferenceUInt(app.iniPath, L"ToolPreferences", L"HighlightWidth", 24), 4U, 80U));
     app.textBold = preferenceUInt(app.iniPath, L"ToolPreferences", L"TextBold", 0) != 0;
     app.textBox = preferenceUInt(app.iniPath, L"ToolPreferences", L"TextBox", 0) != 0;
+    app.textAlignment = static_cast<TextAlignment>(std::min(2U,
+        preferenceUInt(app.iniPath, L"ToolPreferences", L"TextAlignment", 0)));
     app.geometryTool =
         preferenceUInt(app.iniPath, L"ToolPreferences", L"GeometryTool",
                        static_cast<int>(Tool::Circle)) == static_cast<int>(Tool::Rectangle)
@@ -785,6 +798,7 @@ bool saveToolPreferences()
                     static_cast<unsigned>(app.highlightWidth));
             setting(L"ToolPreferences", L"TextBold", app.textBold);
             setting(L"ToolPreferences", L"TextBox", app.textBox);
+            setting(L"ToolPreferences", L"TextAlignment", static_cast<unsigned>(app.textAlignment));
             setting(L"ToolPreferences", L"GeometryTool", static_cast<unsigned>(app.geometryTool));
         }
         commitPreferences(app.iniPath, changes, sections);
@@ -1813,6 +1827,7 @@ Rect welcomeCaptureRect()
                 cx = (canvas.left + canvas.right) / 2;
     return {cx - 32, middle - 133, cx + 32, middle - 69};
 }
+bool redactionMode();
 #include "editor_classic_layout.h"
 #include "editor_layout.h"
 #include "editor_settings_layout.h"
@@ -1887,7 +1902,10 @@ void buildButtons()
             };
             x = client.right - 40;
             add(ToggleFormatting, L"", 28, toolbarHeight() + 18, 28);
-            if (!app.erasing && !app.cropping && !imageSelected())
+            if (!app.erasing && !app.cropping && redactionMode())
+                property(CircleStyleMenu, L"",
+                         {l.styles.left, l.styles.top + 28, l.styles.right, l.styles.bottom});
+            else if (!app.erasing && !app.cropping && !imageSelected())
             {
                 // The color chip opens the picker; the hex value is displayed beside it.
                 property(CustomColor, L"",
@@ -1902,7 +1920,7 @@ void buildButtons()
                                                                          : Eyedropper,
                              L"", {left, top, left + 23, top + 24});
                 }
-                if (inspectorTool() != Tool::Check)
+                if (inspectorTool() != Tool::Check && !redactionMode())
                 {
                     const float w = (l.presets.width() - 8) / 3;
                     for (int i = 0; i < 3; ++i)
@@ -1934,6 +1952,14 @@ void buildButtons()
                     property(
                         TextBox, L"Box",
                         {l.styles.left + 82, l.styles.top + 28, l.styles.right, l.styles.bottom});
+                    const float w = (l.alignment.width() - 8) / 3;
+                    const wchar_t *labels[] = {L"Left", L"Center", L"Right"};
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        const float left = l.alignment.left + i * (w + 4);
+                        property(TextAlignLeft + i, labels[i],
+                                 {left, l.alignment.top + 26, left + w, l.alignment.bottom});
+                    }
                 }
                 property(OpacitySlider, L"",
                          {l.opacitySlider.left + 6, l.opacitySlider.top, l.opacitySlider.right - 6,
@@ -2091,6 +2117,15 @@ void buildButtons()
             case TextBox:
                 hint = L"Put text in a rounded box";
                 break;
+            case TextAlignLeft:
+                hint = L"Align text left";
+                break;
+            case TextAlignCenter:
+                hint = L"Center text";
+                break;
+            case TextAlignRight:
+                hint = L"Align text right";
+                break;
             case TextSizeMenu:
                 hint = L"Choose font size (px)";
                 break;
@@ -2222,6 +2257,12 @@ void closeSettingsPanel()
 }
 bool enabled(int id)
 {
+    if (textAlignmentCommand(id))
+        return hasImage() && textMode() && !app.erasing && !app.cropping;
+    if (redactionMode() && (id == OpacitySlider || id == StrokeSlider ||
+        id == SizeDown || id == SizeUp || id == CustomColor || id == Eyedropper || paletteCommand(id) ||
+        (id >= StrokePresetFirst && id <= StrokePresetThird)))
+        return false;
     if (id == CopySelected)
         return hasImage() && selected();
     if (imageSelected() && (id == CustomColor || id == Eyedropper || paletteCommand(id) ||
@@ -2274,6 +2315,13 @@ bool enabled(int id)
 }
 bool active(int id)
 {
+    if (textAlignmentCommand(id))
+    {
+        const auto alignment = selected() && app.document.items[app.document.selected].kind == Tool::Text
+                                   ? app.document.items[app.document.selected].textAlignment
+                                   : app.textAlignment;
+        return static_cast<int>(alignment) == id - TextAlignLeft;
+    }
     if (id == RecentSnips)
         return app.recentOpen;
     if (id == EraserTool)
@@ -2457,6 +2505,17 @@ void drawUIIcon(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush, int id, Poin
     };
     switch (id)
     {
+    case TextAlignLeft:
+    case TextAlignCenter:
+    case TextAlignRight:
+        for (int row = 0; row < 4; ++row)
+        {
+            const float w = row % 2 ? 10.0f : 16.0f;
+            const float left = id == TextAlignCenter ? (20 - w) / 2
+                             : id == TextAlignRight ? 18 - w : 2;
+            line(left, 4 + row * 4.0f, left + w, 4 + row * 4.0f);
+        }
+        break;
     case RecentSnips:
         rt->DrawEllipse(D2D1::Ellipse({origin.x + 11, origin.y + 10}, 7, 7), brush, 1.7f);
         line(4, 2, 4, 7);
@@ -3071,6 +3130,12 @@ void syncTextEditor()
                     item.bold ? FW_BOLD : FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                     OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH,
                     app.graphics.annotationFontFamily.c_str());
+    const LONG_PTR alignmentStyle = item.textAlignment == TextAlignment::Center ? ES_CENTER
+                                   : item.textAlignment == TextAlignment::Right ? ES_RIGHT : ES_LEFT;
+    const auto oldStyle = GetWindowLongPtrW(app.textEdit, GWL_STYLE);
+    if ((oldStyle & (ES_CENTER | ES_RIGHT)) != alignmentStyle)
+        SetWindowLongPtrW(app.textEdit, GWL_STYLE,
+                         (oldStyle & ~(ES_CENTER | ES_RIGHT)) | alignmentStyle);
     if (font)
     {
         SendMessageW(app.textEdit, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
@@ -3127,7 +3192,8 @@ void syncTextEditor()
     SendMessageW(app.textEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
     SetWindowPos(app.textEdit, HWND_TOP, x, y, width, height, SWP_NOACTIVATE);
     // Keep wrapping independent of the auto-sized visible field.
-    RECT format{0, 0, wrapWidth, height};
+    RECT format{0, 0, item.textAlignment == TextAlignment::Left ? wrapWidth
+                         : std::max(1, contentWidth), height};
     SendMessageW(app.textEdit, EM_SETRECTNP, 0, reinterpret_cast<LPARAM>(&format));
     ShowWindow(app.textEdit, app.pickingColor ? SW_HIDE : SW_SHOW);
     InvalidateRect(app.textEdit, nullptr, TRUE);
@@ -3185,7 +3251,7 @@ void finishTextEditing(bool cancel, bool selectAfter)
             !app.textNew && item.text == app.textBefore.text &&
             item.color == app.textBefore.color && item.fontSize == app.textBefore.fontSize &&
             item.opacity == app.textBefore.opacity && item.bold == app.textBefore.bold &&
-            item.boxed == app.textBefore.boxed;
+            item.boxed == app.textBefore.boxed && item.textAlignment == app.textBefore.textAlignment;
         if (cancel || (app.textNew && item.text.empty()) || unchanged)
         {
             app.document.cancel();
@@ -3224,6 +3290,7 @@ void beginTextEditing(Point point, int existing)
         item.fontSize = app.fontSize;
         item.bold = app.textBold;
         item.boxed = app.textBox;
+        item.textAlignment = app.textAlignment;
         item.textWidth =
             std::max(1.0f, std::min(600.0f, app.image.width - point.x - (item.boxed ? 24 : 0)));
         app.graphics.measureText(item);
@@ -3287,6 +3354,32 @@ void changeTextFormatting(float size, bool bold, bool boxed)
             SetFocus(app.textEdit);
         }
     }
+    repaint();
+}
+void changeTextAlignment(TextAlignment alignment)
+{
+    if (app.textAlignment != alignment)
+        app.toolPreferencesDirty = true;
+    app.textAlignment = alignment;
+    if (selected() && app.document.items[app.document.selected].kind == Tool::Text)
+    {
+        auto &item = app.document.items[app.document.selected];
+        if (item.textAlignment != alignment)
+        {
+            app.document.begin();
+            item.textAlignment = alignment;
+            app.graphics.measureText(item);
+            if (!app.textEdit)
+            {
+                app.document.commit();
+                app.dirty = true;
+                updateTitle();
+            }
+            else
+                syncTextEditor();
+        }
+    }
+    if (app.textEdit) SetFocus(app.textEdit);
     repaint();
 }
 void changeColor(Color value)
@@ -3461,6 +3554,7 @@ void changeThickness(int delta)
 }
 void setPropertyValue(int id, float value)
 {
+    if (redactionMode()) return;
     if (id == StrokeSlider)
     {
         changeThickness(static_cast<int>(value - propertySize()));
@@ -4027,6 +4121,7 @@ void mouseDown(LPARAM lp, bool middle = false)
     item.color = app.colors[static_cast<size_t>(app.tool)];
     item.thickness = brushWidth();
     item.style = app.styles[static_cast<size_t>(app.tool)];
+    if (item.redaction()) item.opacity = 1;
     item.a = item.b = p;
     if (app.tool == Tool::Pen || app.tool == Tool::Highlight)
         item.points.push_back(p);
@@ -4309,7 +4404,12 @@ void copySelectedAnnotation()
         return;
     }
     ClipboardFailure failure;
-    if (!copyAnnotation(app.window, app.document.items[app.document.selected], app.graphics, &failure))
+    const auto &item = app.document.items[app.document.selected];
+    std::optional<Bitmap> backdrop;
+    if (item.redaction())
+        backdrop = app.graphics.flatten(app.image, {app.document.items.begin(),
+                                                    app.document.items.begin() + app.document.selected});
+    if (!copyAnnotation(app.window, item, app.graphics, &failure, backdrop ? &*backdrop : nullptr))
     {
         if (failure.unavailable) status(L"Clipboard is busy. Try Ctrl+C again.");
         else error(app.window, windowsError(failure.operation, failure.code).c_str());
@@ -4829,7 +4929,8 @@ void showShapeChoices(int id)
                    {Tool::Rectangle, 0, L"Square"},
                    {Tool::Rectangle, 1, L"Rounded square"},
                    {Tool::Rectangle, 2, L"Highlight box"},
-                   {Tool::Rectangle, 3, L"Filled box"}};
+                   {Tool::Rectangle, 3, L"Filled box"},
+                   {Tool::Rectangle, 4, L"Redaction"}};
     else if (id == ArrowStyleMenu)
         choices = {{Tool::Arrow, 0, L"Classic"},
                    {Tool::Arrow, 1, L"Outlined"},
@@ -4917,7 +5018,7 @@ void command(int id, bool editSelectedStyle)
             ReleaseCapture();
     }
     const bool textFormatting =
-        id == TextBold || id == TextBox || id == TextSizeMenu || id == SizeDown || id == SizeUp ||
+        id == TextBold || id == TextBox || textAlignmentCommand(id) || id == TextSizeMenu || id == SizeDown || id == SizeUp ||
         id == CustomColor || id == Eyedropper || paletteCommand(id) ||
         (id >= StrokePresetFirst && id <= StrokePresetThird) ||
         (id >= TextSizeFirst && id < TextSizeFirst + static_cast<int>(FontSizes.size()));
@@ -5014,6 +5115,7 @@ void command(int id, bool editSelectedStyle)
             static_cast<Tool>(static_cast<int>(Tool::Circle) + option / StyleChoiceStride);
         const size_t toolIndex = static_cast<size_t>(tool);
         const auto style = static_cast<uint8_t>(option % StyleChoiceStride);
+        const bool redact = tool == Tool::Rectangle && style == 4;
         if (!hasImage() || style >= StyleCounts[toolIndex])
             return;
         if (app.styles[toolIndex] != style)
@@ -5041,6 +5143,10 @@ void command(int id, bool editSelectedStyle)
                 app.document.begin();
                 item.kind = tool;
                 item.style = style;
+                if (redact)
+                {
+                    item.opacity = 1;
+                }
                 app.document.commit();
                 app.dirty = true;
                 updateTitle();
@@ -5049,6 +5155,12 @@ void command(int id, bool editSelectedStyle)
         }
         else
             selectTool(tool);
+        return;
+    }
+    if (textAlignmentCommand(id))
+    {
+        if (!enabled(id)) return;
+        changeTextAlignment(static_cast<TextAlignment>(id - TextAlignLeft));
         return;
     }
     if (id >= TextSizeFirst && id < TextSizeFirst + static_cast<int>(FontSizes.size()))

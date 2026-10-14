@@ -4,6 +4,12 @@ Tool inspectorTool()
 {
     return selected() ? app.document.items[app.document.selected].kind : app.tool;
 }
+bool redactionMode()
+{
+    return selected() ? app.document.items[app.document.selected].redaction()
+                      : app.tool == Tool::Rectangle &&
+                            app.styles[static_cast<size_t>(Tool::Rectangle)] == 4;
+}
 float propertySize()
 {
     if (textMode())
@@ -14,6 +20,7 @@ float propertySize()
 }
 float propertyOpacity()
 {
+    if (redactionMode()) return 1;
     return selected() ? app.document.items[app.document.selected].opacity
                       : app.opacities[static_cast<size_t>(app.tool)];
 }
@@ -44,7 +51,7 @@ const wchar_t *styleName(Tool tool, int style)
 {
     static constexpr const wchar_t *circle[] = {L"Circle", L"Highlight circle", L"Dashed circle"};
     static constexpr const wchar_t *rectangle[] = {L"Square", L"Rounded square", L"Highlight box",
-                                                   L"Filled box"};
+                                                   L"Filled box", L"Redaction"};
     static constexpr const wchar_t *arrow[] = {L"Classic", L"Outlined", L"Curved gloss",
                                                L"Straight gloss", L"Block gloss"};
     static constexpr const wchar_t *check[] = {L"Boxed check", L"Circle badge",   L"Simple check",
@@ -55,7 +62,7 @@ const wchar_t *styleName(Tool tool, int style)
     case Tool::Circle:
         return circle[style % 3];
     case Tool::Rectangle:
-        return rectangle[style % 4];
+        return rectangle[style % 5];
     case Tool::Arrow:
         return arrow[style % 5];
     case Tool::Check:
@@ -68,7 +75,7 @@ const wchar_t *styleName(Tool tool, int style)
 }
 struct InspectorLayout
 {
-    Rect panel, body, color, palette, size, presets, slider, styles, opacity, opacitySlider, help;
+    Rect panel, body, color, palette, size, presets, slider, styles, alignment, opacity, opacitySlider, help;
     float contentHeight = 0, maxScroll = 0;
 };
 InspectorLayout inspectorLayout()
@@ -84,12 +91,17 @@ InspectorLayout inspectorLayout()
         y += h;
     };
     region(l.color, 68);
-    if (!imageSelected())
+    if (redactionMode())
+    {
+        y += 12;
+        region(l.styles, 82);
+    }
+    else if (!imageSelected())
     {
         region(l.palette, 30.0f * ((static_cast<int>(app.palette.size()) + 2 + 7) / 8));
         y += 20;
         region(l.size, 30);
-        if (inspectorTool() != Tool::Check)
+        if (inspectorTool() != Tool::Check && !redactionMode())
         {
             region(l.presets, 34);
             y += 8;
@@ -104,17 +116,19 @@ InspectorLayout inspectorLayout()
         {
             y += 22;
             region(l.styles, 64);
+            y += 16;
+            region(l.alignment, 60);
         }
     }
     y += 22;
     region(l.opacity, 30);
-    region(l.opacitySlider, 32);
+    if (!redactionMode()) region(l.opacitySlider, 32);
     y += 26;
     region(l.help, 100);
     l.contentHeight = y;
     l.maxScroll = std::max(0.0f, y - l.body.height());
     const float offset = l.body.top - std::clamp(app.inspectorScroll, 0.0f, l.maxScroll);
-    for (Rect *r : {&l.color, &l.palette, &l.size, &l.presets, &l.slider, &l.styles, &l.opacity,
+    for (Rect *r : {&l.color, &l.palette, &l.size, &l.presets, &l.slider, &l.styles, &l.alignment, &l.opacity,
                     &l.opacitySlider, &l.help})
     {
         r->top += offset;
@@ -133,5 +147,5 @@ bool propertyCommand(int id)
            id == SizeUp || id == StrokeSlider || id == OpacitySlider ||
            (id >= StrokePresetFirst && id <= StrokePresetThird) ||
            (id >= CircleStyleMenu && id <= LineStyleMenu) || id == TextBold || id == TextBox ||
-           id == TextSizeMenu;
+           id == TextSizeMenu || textAlignmentCommand(id);
 }

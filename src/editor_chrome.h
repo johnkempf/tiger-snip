@@ -178,6 +178,23 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                      {l.help.left, l.help.top + 60, l.help.right, l.help.top + 86}, Muted,
                      app.graphics.smallFont.get());
             }
+            else if (redactionMode())
+            {
+                text(L"Redaction", {l.color.left, l.color.top, l.color.right, l.color.top + 22}, Ink);
+                text(L"Soft, feathered blur.",
+                     {l.color.left, l.color.top + 30, l.color.right, l.color.top + 58}, Muted,
+                     app.graphics.smallFont.get());
+                rule(l.styles.top - 12);
+                text(L"Shape style", {l.styles.left, l.styles.top, l.styles.right, l.styles.top + 22}, Ink);
+                rule(l.opacity.top - 12);
+                text(L"Feathered edges", l.opacity, Muted, app.graphics.smallFont.get());
+                text(L"Drag the handles to adjust.",
+                     {l.help.left, l.help.top, l.help.right, l.help.top + 26}, Muted,
+                     app.graphics.smallFont.get());
+                text(L"Ctrl+Z undoes your last change.",
+                     {l.help.left, l.help.top + 30, l.help.right, l.help.top + 56}, Muted,
+                     app.graphics.smallFont.get());
+            }
             else
             {
                 text(L"Color", {l.color.left, l.color.top, l.color.right, l.color.top + 22}, Ink);
@@ -190,7 +207,7 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                      {l.color.left + 54, l.color.top + 28, l.color.right - 8, l.color.top + 62},
                      Ink);
                 rule(l.size.top - 12);
-                if (inspectorTool() != Tool::Check)
+                if (inspectorTool() != Tool::Check && !redactionMode())
                 {
                     text(textMode()        ? L"Font size"
                          : highlightMode() ? L"Width"
@@ -219,6 +236,8 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                     rule(l.styles.top - 12);
                     text(L"Text style",
                          {l.styles.left, l.styles.top, l.styles.right, l.styles.top + 22}, Ink);
+                    text(L"Alignment",
+                         {l.alignment.left, l.alignment.top, l.alignment.right, l.alignment.top + 22}, Ink);
                 }
                 rule(l.opacity.top - 12);
                 text(L"Opacity", l.opacity, Ink);
@@ -395,7 +414,7 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
             const bool primary = b.command == NewSnip || b.command == CaptureMenu;
             const bool outlined = b.command == Copy || b.command == Save || b.command == SaveAs ||
                                   b.command == RecentSnips || b.command == TextBold ||
-                                  b.command == TextBox || b.command == ToggleFit;
+                                  b.command == TextBox || textAlignmentCommand(b.command) || b.command == ToggleFit;
             if (primary)
             {
                 if ((b.command == NewSnip && r.top < toolbarHeight()) || b.command == CaptureMenu)

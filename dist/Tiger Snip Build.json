@@ -1,14 +1,14 @@
 {
   "formatVersion": 1,
-  "builtAtUtc": "2026-10-13T17:28:49Z",
-  "sourceBaseCommit": "d496b6d23a12b13b3988b625c87f5d8d1be9be62",
+  "builtAtUtc": "2026-10-14T01:52:41Z",
+  "sourceBaseCommit": "0ab4abea6254b3c591823db300c95390baa24c65",
   "workingTreeHasUncommittedChanges": true,
   "compilerVersion": [
     "clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)",
     "Target: x86_64-w64-windows-gnu",
     "Thread model: posix",
-    "InstalledDir: C:/Users/johnke/OneDrive - Samtec/Documents/Github/jack-snip/.tools/llvm-mingw-20260922-ucrt-x86_64/bin",
-    "Configuration file: C:/Users/johnke/OneDrive - Samtec/Documents/Github/jack-snip/.tools/llvm-mingw-20260922-ucrt-x86_64/bin/x86_64-w64-windows-gnu.cfg"
+    "InstalledDir: C:/Users/jackk/repos/jack-snip/.tools/llvm-mingw-20260922-ucrt-x86_64/bin",
+    "Configuration file: C:/Users/jackk/repos/jack-snip/.tools/llvm-mingw-20260922-ucrt-x86_64/bin/x86_64-w64-windows-gnu.cfg"
   ],
   "compilerFiles": [
     {
@@ -79,7 +79,7 @@
   "powershellVersion": "7.6.5",
   "output": {
     "name": "Tiger Snip.exe",
-    "sha256": "456D80EF7AF14BD1FDDC139C12C53719BEA166E71A95F7A54B89B3643C1F5F76"
+    "sha256": "BECC49935CF4CD33CD073107C1155DD57E2A13D0B5A43DE1E748FB97DB2733C4"
   },
   "inputs": [
     {
@@ -92,11 +92,11 @@
     },
     {
       "path": "package.ps1",
-      "sha256": "1BA16DBF2F1CBC96B718BA0B36509043FAFA4989719682A03D2BFC577885FF6F"
+      "sha256": "19C722D125BA306C9830C54149C6DF9776B58F9CE214AEDBAB2E3713ED034F8F"
     },
     {
       "path": "resources\\app-icon.md",
-      "sha256": "CF66C6A1E68DABF68B5D611743DB73FC47EE86CBECA2663C97A14DD9BCDA968F"
+      "sha256": "C64F9814EE0624686358362C3A2F584A71D4EEF458F0EACA7C9ED02F1142E145"
     },
     {
       "path": "resources\\app-icon.png",
@@ -112,11 +112,11 @@
     },
     {
       "path": "resources\\licenses\\LLVM.txt",
-      "sha256": "8D85C1057D742E597985C7D4E6320B015A9139385CFF4CBAE06FFC0EBE89AFEE"
+      "sha256": "A9ED3EAE930ADBC631B83300B78AB5D228C9B1E4560D64EC4B4EA2BCF69F4569"
     },
     {
       "path": "resources\\licenses\\MinGW-runtime.txt",
-      "sha256": "1DB8DA07B436C68833C0673FFEE3D9FCB2526047F3820B81661865DFEDC79A1F"
+      "sha256": "6F8707C004133080B2E11DA8CAEFD1D71531B7423AE9C9E3D6043801D24BF5B2"
     },
     {
       "path": "resources\\samtec-logo-transparent.png",
@@ -124,7 +124,7 @@
     },
     {
       "path": "resources\\samtec-logo.md",
-      "sha256": "720F85C1C4F8B8BE1A8227063930B2A8FDAC248EE6A80A7882009AC7A5DC1A7A"
+      "sha256": "C345BC106581E0439197CE809412754F6AC03F93FDCA9461053F5EA943CBF718"
     },
     {
       "path": "resources\\samtec-logo.png",
@@ -132,7 +132,7 @@
     },
     {
       "path": "resources\\samtec-marks.md",
-      "sha256": "1CDE8DCA3E20DEE2A3CD10AED1EA67D39644F659F18A132FA0102281286EC899"
+      "sha256": "1A26786795EA45CD99A62F50235AC6936EE38C0F28F15F203F08D568AC80A34C"
     },
     {
       "path": "resources\\samtec-tiger.png",
@@ -164,15 +164,15 @@
     },
     {
       "path": "src\\capture.h",
-      "sha256": "93BD7968D26B660418281BBA06286E7E5F83E2FCB4E218F7908EF5279C062E24"
+      "sha256": "BD971B99F6FD750FD2360F14409580B7C0167DF0FEBF5FADE611C64915A9FA0E"
     },
     {
       "path": "src\\clipboard.cpp",
-      "sha256": "2D50C55DFC8B619BAEEF930D38674969FB3F6EB9885C26F9E58AC2DB21701BC7"
+      "sha256": "7D8DA7DAC1A22CCDB7DE9B5055AD6635CF848E2CB11CE58986AD33F52C7C498C"
     },
     {
       "path": "src\\clipboard.h",
-      "sha256": "52BDD5959DA9FB6D14FCBBCD52B7A71E10D4B7D5ABE2FAE17B61A2D27710F3FC"
+      "sha256": "525732D26C9050065718BD1D356C80F02F984C40935C1BBEEE7086856FA930C8"
     },
     {
       "path": "src\\color_picker.cpp",
@@ -184,23 +184,23 @@
     },
     {
       "path": "src\\commands.h",
-      "sha256": "23C8F88B252F5ECA056C4E0E4EE2B8212D5CF2556C6F776A443D68CF2EFF8A27"
+      "sha256": "4E0952C7F097A3A6AF2CFFE4ECA3227819188F7BD94D28B2D995F820E0F86676"
     },
     {
       "path": "src\\editor_chrome.h",
-      "sha256": "CAE7511C930527E6ACCA70877756DCC14CD943F81A9CC776E1E54DF6957E3EFF"
+      "sha256": "DCDF8F61D2C117F4E8C2A5F44DEFF6CDE1B3D35FFCFACAF8B7F9357FCA4E5AB1"
     },
     {
       "path": "src\\editor_classic_chrome.h",
-      "sha256": "38FF58D373B34A7F2033CAA21E7F777FD1352E350F4D5DFAB671DA266547CF77"
+      "sha256": "B58C190E73EC5E17F8300C0051ABC127298765E0959128FB0D7B6D0BD6AFD175"
     },
     {
       "path": "src\\editor_classic_layout.h",
-      "sha256": "CA164482F7B415D02AF7A212BACDAD2E021C3370C170B0A13ED515645861AD64"
+      "sha256": "143EC8437329DD31344C03F7113969850F0B512C15F10106226A33D8745AFEE3"
     },
     {
       "path": "src\\editor_layout.h",
-      "sha256": "B318752BFE7E2FF54FAA3B093F38EF96C5A09F90D4C3A929816C59B190420D10"
+      "sha256": "F8B6A1FBF770C8F0AB42B93CD812F9DD1B325D587407A561527C3A0E655AF32E"
     },
     {
       "path": "src\\editor_settings_chrome.h",
@@ -220,19 +220,19 @@
     },
     {
       "path": "src\\file_io.h",
-      "sha256": "5589A7ABA5C067547A022229C4ACA61C567A591296325A3B922914A0C35C05F7"
+      "sha256": "D4835F84585087CC60F9E33B39F1DBA2907836B62174B0A0F23CC8D3CE4C0003"
     },
     {
       "path": "src\\graphics.cpp",
-      "sha256": "852AE3CDBA88B41E01921301A05C47AA81A3E7892D9439C706DBD4E1A5A55C86"
+      "sha256": "54E79A3A86CA79F2CBC7A3150BD6A88A4B860625ED6692503762E5DD8DAE30CD"
     },
     {
       "path": "src\\graphics.h",
-      "sha256": "78265BD7845C22B143FD4E7FC42E028713F7278DBF86A4E999E55CB8402D6B59"
+      "sha256": "8B76EBCC00AAF40F49D38A10AD80E5CD814B0E9B4B6B422C187800E456482A78"
     },
     {
       "path": "src\\main.cpp",
-      "sha256": "1FF86276EC6EADA6EAA70DB472C5E949C7B6684F51924707646EA7291DF5B512"
+      "sha256": "03E3B1EB63031A4162404FDC4FB8960F705AAD370269E1D586C5FED06A1AC330"
     },
     {
       "path": "src\\model.cpp",
@@ -240,7 +240,7 @@
     },
     {
       "path": "src\\model.h",
-      "sha256": "BD2E10ADC5298BC28A0D8CF90C642C9D6CF09D2214549645510033615AB41B0A"
+      "sha256": "6A97B34403D17037CD628E2D7ED8B87D8E733EA43F85DD5116C26DEE8DE1DDDA"
     },
     {
       "path": "src\\ocr_layout.cpp",
@@ -264,7 +264,7 @@
     },
     {
       "path": "src\\settings.h",
-      "sha256": "82C40D4E8D392FFCACEFDB6DA2C38A14AB95D466B6FDF4482C1CE4B40CEB31F9"
+      "sha256": "36FA5F6F18BED9D30F0596A26A76E84EBD15ABADED9CF59C7C02CDD7D73B1B66"
     },
     {
       "path": "src\\test_hooks.h",
@@ -272,11 +272,11 @@
     },
     {
       "path": "src\\test_reports.cpp",
-      "sha256": "4777F7A15CB56F08F4DEDE913A52F947FC2E17385CFC66A021E36BDE56C2BC7F"
+      "sha256": "052813748894C1B8A030D58196026FB4D94F5C1865D3FB0C44F4674F35FDBD9B"
     },
     {
       "path": "src\\test_reports.h",
-      "sha256": "299CAFB8049777146A28C5B8625C446D61F99BA268B9BD12C62E18E4A4A42EF7"
+      "sha256": "5D2D1ACE6F4E42D14C1D268281F1B683E221DE27278B0219DA267339FB8BC9EE"
     },
     {
       "path": "src\\text_notice.cpp",
@@ -288,11 +288,11 @@
     },
     {
       "path": "src\\windows_support.cpp",
-      "sha256": "B63E29497CD0971CDBF65A162A95EA053EB8E19E2B40F4AB023FD85CC1F83990"
+      "sha256": "51851BB579F3B14063E5154BD80A258A0041DBAA05A99186E32135FEC779A902"
     },
     {
       "path": "src\\windows_support.h",
-      "sha256": "5A43C73E5F5C98631D84E831DECF559C2E845DDD55D9350738E628EC004377F3"
+      "sha256": "9230EAA3BD61038D99AD7A036775E4040A24F517A66B565AC6D3AD822FCF4AE0"
     },
     {
       "path": "tests\\autocopy.cpp",
@@ -304,7 +304,7 @@
     },
     {
       "path": "tests\\file_save.cpp",
-      "sha256": "B1B3F02A5342EF25F2A7D408B33AA1E7EF8FCEFF2C9D4E19596CD1A95AA84EB8"
+      "sha256": "CF5B7EB0F648F57FC6F3BB8EFD16FF85B7870A68004D18BD9798D9769479DBF9"
     },
     {
       "path": "tests\\fixtures\\ocr\\barcode-number-tight.png",
@@ -396,7 +396,7 @@
     },
     {
       "path": "tests\\image_edit.cpp",
-      "sha256": "8C60D2E3A9C31CE5838AC2B642C3C39004CE9F48402D65F72E4714A73B48D413"
+      "sha256": "74E661512D244B449DEC17E41DC3D205CCE50C19A9C3B10BB91E630A8C32969C"
     },
     {
       "path": "tests\\native_menu.cpp",
@@ -404,7 +404,7 @@
     },
     {
       "path": "tests\\robustness.cpp",
-      "sha256": "F668FC8536F99D0CCE016523E47FEC849502F4D4FB39C42C54B66AB84AF2B271"
+      "sha256": "242376C9BAA3D9E07BB5454A03367326CD98EA706A58CE115F59C8A31555C3D1"
     },
     {
       "path": "tests\\settings.cpp",
@@ -412,7 +412,7 @@
     },
     {
       "path": "tests\\single_instance.cpp",
-      "sha256": "7462C2B8EDA231EEAB9D148C9EB659BEB1A69196E61F6F309518B9549CC42A8E"
+      "sha256": "1A204E0926E887C325ABC7C2F2F8425A41445144BF5A8245A50703C332E93284"
     },
     {
       "path": "tests\\text_capture.cpp",
@@ -420,11 +420,11 @@
     },
     {
       "path": "tests\\text_edit.cpp",
-      "sha256": "C531685322FE0EB5717F565AA3210381FA671E7DDB129055D3C214477E6C3450"
+      "sha256": "3F6D9037C0DFAF0EB1263FBC2A8C912EC081067760587642D5F54B36262D9524"
     },
     {
       "path": "tests\\ui.cpp",
-      "sha256": "59115A6FD2DA110FA7D219B0CEC3D288A118CAC7D2C46BFE2D4E98BF53449616"
+      "sha256": "70107FDD9734A4609A35B334A404E5B2F02CDA1BC363B85CCC092D3D35F1B91D"
     }
   ]
 }

@@ -85,6 +85,12 @@ Eyedropper: click the pipette beside the colors, then click the image.
 It samples screenshot/annotation colors and can recolor a selected object. Esc cancels.
 Shapes: circles and squares share a menu with large visual style previews.
 Choose square, rounded square, highlight box, filled box, or one of the circle styles.
+Shapes also offers Redaction: drag a rectangle over an area to apply soft blur
+with feathered rounded edges. Leave a little margin around the content so it sits
+within the full blur. The blur fades gradually into the surrounding image and
+preserves the backdrop's colors on both light and dark content.
+Move or resize it with Select; the finish follows the area underneath its new position.
+Copy and Save include the same effect, including rounded corners.
 Drag to create; hold Shift for a perfect circle/square. Click Shapes to repeat the last shape; choose rectangles in its style menu.
 Use the small arrow beside Shapes, Arrow, Check, and Line to choose a visual style.
 Arrows: classic, outlined with a black border, curved gloss, straight gloss, or block gloss.
@@ -149,6 +155,10 @@ Each tool remembers its own last color and style, including after File > Exit.
 Pen size (1-100 px, shared with shape strokes) is also remembered after restarting.
 Highlight width, text size, and each tool's opacity are saved separately.
 Text also remembers font size, bold, and the rounded Box setting.
+Text alignment: choose Left, Center, or Right beneath Bold/Box in the Side panels
+properties panel. Top toolbars shows the alignment icons beside Bold/Box.
+Alignment applies to selected text or the next text you create and is remembered
+after restarting. Side handles set the box width; lines align within that box.
 Preferences save on close/exit only. New captures still start with Pen.
 
 Capture in the modern settings panel lets you set two independent global shortcuts.

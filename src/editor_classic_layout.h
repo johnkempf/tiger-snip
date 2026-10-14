@@ -6,7 +6,7 @@ struct ToolbarLayout
 ToolbarLayout toolbarLayout()
 {
     const float width = clientDips().right;
-    const float formattingWidth = textMode() ? 264 : 160;
+    const float formattingWidth = textMode() ? 366 : 160;
     // Center the whole label/control group between the eyedropper and zoom controls.
     const float paletteRight =
         70 + 34 * std::min(static_cast<int>(app.palette.size()) + 2, paletteColumns());
@@ -83,7 +83,7 @@ void buildClassicButtons()
                 add(i == static_cast<int>(app.palette.size()) ? CustomColor : Eyedropper, L"", 28,
                     top, 28);
         }
-        if (!app.erasing && !imageSelected())
+        if (!app.erasing && !imageSelected() && !redactionMode())
         {
             x = layout.formatting.left + 52;
             add(SizeDown, L"\u2212", 28, y, 28);
@@ -98,6 +98,10 @@ void buildClassicButtons()
             add(TextBold, L"B", 28, y, 28);
             x = layout.formatting.left + 204;
             add(TextBox, L"Box", 60, y, 28);
+            x = layout.formatting.left + 270;
+            add(TextAlignLeft, L"", 28, y, 28);
+            add(TextAlignCenter, L"", 28, y, 28);
+            add(TextAlignRight, L"", 28, y, 28);
         }
         x = clientDips().right - 140;
         add(Fit, L"Fit", 48, y, 28);

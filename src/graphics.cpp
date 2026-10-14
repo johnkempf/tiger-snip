@@ -102,6 +102,19 @@ Com<IDWriteTextLayout> Graphics::textLayout(const Annotation &item)
                                         format.get(), std::max(1.0f, item.textWidth), 16384,
                                         layout.put()),
           "Cannot lay out annotation text.");
+    if (item.textAlignment != TextAlignment::Left)
+    {
+        // Align within the visible text box, rather than the unused wrapping limit.
+        DWRITE_TEXT_METRICS metrics{};
+        check(layout->GetMetrics(&metrics), "Cannot measure aligned text.");
+        check(layout->SetMaxWidth(item.textFrame ? std::max(1.0f, item.textWidth)
+                                                : std::max(1.0f, metrics.widthIncludingTrailingWhitespace)),
+              "Cannot size aligned text.");
+        check(layout->SetTextAlignment(item.textAlignment == TextAlignment::Center
+                                          ? DWRITE_TEXT_ALIGNMENT_CENTER
+                                          : DWRITE_TEXT_ALIGNMENT_TRAILING),
+              "Cannot align annotation text.");
+    }
     return layout;
 }
 void Graphics::measureText(Annotation &item)
@@ -162,7 +175,7 @@ void Graphics::drawAnnotations(ID2D1RenderTarget *rt, const std::vector<Annotati
             rt->PushLayer(D2D1::LayerParameters(domain, visible.get(), D2D1_ANTIALIAS_MODE_ALIASED),
                           cutoutLayer.get());
         }
-        const float opacity = std::clamp(item.opacity, 0.0f, 1.0f);
+        const float opacity = item.redaction() ? 1.0f : std::clamp(item.opacity, 0.0f, 1.0f);
         if (opacity < 1)
         {
             if (!opacityLayer)
@@ -225,6 +238,19 @@ void Graphics::drawAnnotations(ID2D1RenderTarget *rt, const std::vector<Annotati
             break;
         }
         case Tool::Rectangle: {
+            if (item.redaction())
+            {
+                // Standalone tool/menu glyph. Actual screenshots use a blurred backdrop in flatten.
+                const float radius = std::min({5.0f, r.width() / 4, r.height() / 4});
+                auto glass = D2D1::RoundedRect({r.left, r.top, r.right, r.bottom}, radius, radius);
+                brush->SetColor(color(rgb(199, 208, 217), .55f));
+                rt->FillRoundedRectangle(glass, brush.get());
+                brush->SetColor(color(rgb(135, 147, 159), .3f));
+                rt->DrawLine({r.left + r.width() * .22f, (r.top + r.bottom) / 2},
+                             {r.right - r.width() * .22f, (r.top + r.bottom) / 2},
+                             brush.get(), std::min(4.0f, r.height() / 4), roundStroke.get());
+                break;
+            }
             const float radius =
                 item.style == 0 ? 0 : std::min({12.0f, r.width() / 4, r.height() / 4});
             auto box = D2D1::RoundedRect({r.left, r.top, r.right, r.bottom}, radius, radius);
@@ -405,8 +431,93 @@ static Com<IWICImagingFactory> wicFactory()
           "Cannot initialize Windows image encoding.");
     return wic;
 }
-Bitmap Graphics::annotationImage(const Annotation &item)
+namespace
 {
+constexpr int GlassBlurRadius = 18, GlassBlurPadding = GlassBlurRadius * 3;
+float glassTransition(float value)
+{
+    const float t = std::clamp(value, 0.0f, 1.0f);
+    return t * t * t * (t * (t * 6 - 15) + 10);
+}
+void glassBoxBlur(Bitmap &image, bool horizontal)
+{
+    auto blurred = image.pixels;
+    const int lines = horizontal ? image.height : image.width;
+    const int length = horizontal ? image.width : image.height;
+    const int window = GlassBlurRadius * 2 + 1;
+    auto offset = [&](int line, int position, int channel) -> size_t {
+        const int x = horizontal ? position : line, y = horizontal ? line : position;
+        return (static_cast<size_t>(y) * image.width + x) * 4 + channel;
+    };
+    for (int line = 0; line < lines; ++line)
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            unsigned sum = 0;
+            for (int i = -GlassBlurRadius; i <= GlassBlurRadius; ++i)
+                sum += image.pixels[offset(line, std::clamp(i, 0, length - 1), channel)];
+            for (int position = 0; position < length; ++position)
+            {
+                blurred[offset(line, position, channel)] = static_cast<uint8_t>((sum + window / 2) / window);
+                sum -= image.pixels[offset(line, std::max(0, position - GlassBlurRadius), channel)];
+                sum += image.pixels[offset(line, std::min(length - 1, position + GlassBlurRadius + 1), channel)];
+            }
+        }
+    image.pixels.swap(blurred);
+}
+// Three separable box passes approximate a Gaussian blur with bounded work per pixel.
+Annotation glassAnnotation(const Annotation &item, Bitmap backdrop, int backdropX, int backdropY)
+{
+    const auto bounds = item.bounds();
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        glassBoxBlur(backdrop, true);
+        glassBoxBlur(backdrop, false);
+    }
+    const int left = std::max(backdropX, static_cast<int>(std::floor(bounds.left)));
+    const int top = std::max(backdropY, static_cast<int>(std::floor(bounds.top)));
+    const int right = std::min(backdropX + backdrop.width, static_cast<int>(std::ceil(bounds.right)));
+    const int bottom = std::min(backdropY + backdrop.height, static_cast<int>(std::ceil(bounds.bottom)));
+    auto glass = backdrop.crop(left - backdropX, top - backdropY, right - left, bottom - top);
+    const float radius = std::min({12.0f, bounds.width() / 4, bounds.height() / 4});
+    const float feather = std::max(.5f, std::min(18.0f, std::min(bounds.width(), bounds.height()) * .22f));
+    for (int y = 0; y < glass.height; ++y)
+        for (int x = 0; x < glass.width; ++x)
+        {
+            const float qx = std::abs(left + x + .5f - (bounds.left + bounds.right) / 2) - (bounds.width() / 2 - radius);
+            const float qy = std::abs(top + y + .5f - (bounds.top + bounds.bottom) / 2) - (bounds.height() / 2 - radius);
+            const float distance = std::hypot(std::max(qx, 0.0f), std::max(qy, 0.0f)) +
+                std::min(std::max(qx, qy), 0.0f) - radius;
+            const size_t p = (static_cast<size_t>(y) * glass.width + x) * 4;
+            // Blend only blurred backdrop pixels, entirely inside the selected rectangle.
+            // The quintic ramp has no slope/curvature discontinuity at either end of the feather.
+            const float coverage = glassTransition(-distance / feather);
+            glass.pixels[p + 3] = static_cast<uint8_t>(std::lround(coverage * 255));
+        }
+    auto effect = item;
+    effect.kind = Tool::Select;
+    effect.style = 0;
+    effect.opacity = 1;
+    effect.a = {float(left), float(top)};
+    effect.b = {float(right), float(bottom)};
+    effect.raster = std::make_shared<const Bitmap>(std::move(glass));
+    return effect;
+}
+}
+Bitmap Graphics::annotationImage(const Annotation &item, const Bitmap *backdrop)
+{
+    if (item.redaction() && backdrop && !backdrop->empty())
+    {
+        const auto bounds = item.bounds();
+        if (bounds.right > 0 && bounds.bottom > 0 && bounds.left < backdrop->width &&
+            bounds.top < backdrop->height && bounds.width() > 0 && bounds.height() > 0)
+        {
+            const int left = std::max(0, static_cast<int>(std::floor(bounds.left)) - GlassBlurPadding);
+            const int top = std::max(0, static_cast<int>(std::floor(bounds.top)) - GlassBlurPadding);
+            const int right = std::min(backdrop->width, static_cast<int>(std::ceil(bounds.right)) + GlassBlurPadding);
+            const int bottom = std::min(backdrop->height, static_cast<int>(std::ceil(bounds.bottom)) + GlassBlurPadding);
+            return annotationImage(glassAnnotation(item, backdrop->crop(left, top, right - left, bottom - top), left, top));
+        }
+    }
     initialize();
     const auto bounds = item.bounds();
     const float margin = item.raster ? 0 : item.kind == Tool::Highlight ? 2 :
@@ -473,7 +584,41 @@ Bitmap Graphics::flatten(const Bitmap &image, const std::vector<Annotation> &ite
         base.get(),
         D2D1::RectF(0, 0, static_cast<float>(image.width), static_cast<float>(image.height)), 1,
         D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR);
-    drawAnnotations(rt.get(), items, editingText);
+    std::vector<Annotation> group;
+    int groupEditingText = -1;
+    auto drawGroup = [&] {
+        drawAnnotations(rt.get(), group, groupEditingText);
+        group.clear();
+        groupEditingText = -1;
+    };
+    for (size_t index = 0; index < items.size(); ++index)
+    {
+        const auto &item = items[index];
+        if (!item.redaction())
+        {
+            if (static_cast<int>(index) == editingText) groupEditingText = static_cast<int>(group.size());
+            group.push_back(item);
+            continue;
+        }
+        const auto bounds = item.bounds();
+        if (bounds.right <= 0 || bounds.bottom <= 0 || bounds.left >= image.width ||
+            bounds.top >= image.height || bounds.width() <= 0 || bounds.height() <= 0)
+            continue;
+        drawGroup();
+        check(rt->EndDraw(), "Cannot read the glass backdrop.");
+        const int left = std::max(0, static_cast<int>(std::floor(bounds.left)) - GlassBlurPadding);
+        const int top = std::max(0, static_cast<int>(std::floor(bounds.top)) - GlassBlurPadding);
+        const int right = std::min(image.width, static_cast<int>(std::ceil(bounds.right)) + GlassBlurPadding);
+        const int bottom = std::min(image.height, static_cast<int>(std::ceil(bounds.bottom)) + GlassBlurPadding);
+        auto backdrop = Bitmap::create(right - left, bottom - top);
+        const WICRect region{left, top, backdrop.width, backdrop.height};
+        check(bitmap->CopyPixels(&region, backdrop.width * 4, static_cast<UINT>(backdrop.pixels.size()),
+                                 backdrop.pixels.data()), "Cannot capture the glass backdrop.");
+        auto glass = glassAnnotation(item, std::move(backdrop), left, top);
+        rt->BeginDraw();
+        drawAnnotations(rt.get(), {glass});
+    }
+    drawGroup();
     check(rt->EndDraw(), "Cannot render annotations.");
     Bitmap result = Bitmap::create(image.width, image.height);
     check(bitmap->CopyPixels(nullptr, image.width * 4, static_cast<UINT>(result.pixels.size()),
@@ -484,6 +629,9 @@ Bitmap Graphics::flatten(const Bitmap &image, const std::vector<Annotation> &ite
 Bitmap Graphics::flattenRegion(const Bitmap &image, const std::vector<Annotation> &items,
                                int editingText, int x, int y, int width, int height)
 {
+    // Backdrop effects depend on neighboring pixels and earlier annotation layers.
+    if (std::any_of(items.begin(), items.end(), [](const Annotation &item) { return item.redaction(); }))
+        return flatten(image, items, editingText).crop(x, y, width, height);
     auto shifted = items;
     for (auto &item : shifted)
         item.move({-float(x), -float(y)});
@@ -949,6 +1097,84 @@ Bitmap Graphics::decode(const std::vector<uint8_t> &bytes)
 }
 void Graphics::test()
 {
+    {
+        auto source = Bitmap::create(320, 180);
+        for (int y = 0; y < source.height; ++y)
+            for (int x = 0; x < source.width; ++x)
+            {
+                const size_t p = (static_cast<size_t>(y) * source.width + x) * 4;
+                source.pixels[p] = x < 160 ? 30 : (x % 2 ? 235 : 25);
+                source.pixels[p + 1] = 10;
+                source.pixels[p + 2] = x < 160 ? (x % 2 ? 235 : 25) : 30;
+                source.pixels[p + 3] = 255;
+            }
+        auto require = [](bool ok, const char *message) { if (!ok) throw std::runtime_error(message); };
+        Annotation glass;
+        glass.kind = Tool::Rectangle;
+        glass.style = 4;
+        glass.a = {40, 30}; glass.b = {280, 150};
+        glass.opacity = 0; // The effect replaces the backdrop independently of shape opacity.
+        const auto original = source.pixels;
+        const auto fog = flatten(source, {glass});
+        auto pixel = [](const Bitmap &bitmap, int x, int y, int channel) {
+            return bitmap.pixels[(static_cast<size_t>(y) * bitmap.width + x) * 4 + channel];
+        };
+        require(source.pixels == original, "Frosted glass changed the original screenshot.");
+        require(pixel(fog, 90, 90, 2) > 110 && pixel(fog, 90, 90, 2) < 155 &&
+                    std::abs(int(pixel(fog, 90, 90, 2)) - pixel(fog, 91, 90, 2)) <= 3 &&
+                    pixel(fog, 90, 90, 2) > pixel(fog, 90, 90, 0) + 70 &&
+                    pixel(fog, 230, 90, 0) > pixel(fog, 230, 90, 2) + 70,
+                "Soft blur did not diffuse fine detail while preserving backdrop colors.");
+        auto lightSource = source;
+        std::fill(lightSource.pixels.begin(), lightSource.pixels.end(), 255);
+        const auto lightCover = flatten(lightSource, {glass});
+        require(lightCover.pixels == lightSource.pixels,
+                "Soft blur added a fill or outline to a uniform light background.");
+        auto darkSource = lightSource;
+        for (size_t p = 0; p < darkSource.pixels.size(); p += 4)
+        { darkSource.pixels[p] = 34; darkSource.pixels[p + 1] = 28; darkSource.pixels[p + 2] = 24; }
+        const auto darkCover = flatten(darkSource, {glass});
+        for (size_t p = 0; p < darkSource.pixels.size(); ++p)
+            require(std::abs(int(darkSource.pixels[p]) - darkCover.pixels[p]) <= 1,
+                    "Soft blur added a bright veil or a hard edge to a dark background.");
+        for (int channel = 0; channel < 4; ++channel)
+            require(pixel(fog, 40, 30, channel) == pixel(source, 40, 30, channel) &&
+                        pixel(fog, 39, 90, channel) == pixel(source, 39, 90, channel),
+                    "Frosted glass did not preserve rounded corners or pixels outside the rectangle.");
+        require(decode(png(fog)).pixels == fog.pixels, "Frosted glass PNG round trip failed.");
+        require(flattenRegion(source, {glass}, -1, 80, 60, 120, 80).pixels == fog.crop(80, 60, 120, 80).pixels,
+                "Regional preview lost the glass blur's surrounding context.");
+        Annotation green;
+        green.kind = Tool::Rectangle; green.style = 3; green.color = rgb(20, 220, 40);
+        green.a = {60, 40}; green.b = {140, 130};
+        const auto layered = flatten(source, {green, glass});
+        require(pixel(layered, 100, 90, 1) > 180 && pixel(layered, 100, 90, 2) < 90,
+                "Frosted glass did not blur earlier annotations.");
+        const auto onTop = flatten(source, {glass, green});
+        require(pixel(onTop, 100, 90, 1) == 220 && pixel(onTop, 100, 90, 2) == 20,
+                "Frosted glass blurred later annotations.");
+        auto moved = glass;
+        moved.move({100, 0});
+        const auto movedFog = flatten(source, {moved});
+        require(pixel(movedFog, 90, 90, 2) == pixel(source, 90, 90, 2) &&
+                    pixel(movedFog, 230, 90, 0) > 110,
+                "Moved glass did not follow its new backdrop or handle the image edge.");
+        const auto copy = annotationImage(glass, &source);
+        require(copy.width == 240 && copy.height == 120 && copy.pixels[3] == 0 &&
+                    pixel(copy, 50, 60, 2) == pixel(fog, 90, 90, 2),
+                "Copied glass lost its blurred content or transparent rounded corners.");
+        require(pixel(copy, 0, 60, 3) <= 1 && pixel(copy, 3, 60, 3) > 5 && pixel(copy, 3, 60, 3) < 35 &&
+                    pixel(copy, 8, 60, 3) > 85 && pixel(copy, 8, 60, 3) < 150 &&
+                    pixel(copy, 12, 60, 3) > 180 && pixel(copy, 12, 60, 3) < 235 &&
+                    pixel(copy, 17, 60, 3) >= 254,
+                "Blur feathering did not ramp gradually from clear pixels to full blur.");
+        for (int x = 1; x <= 18; ++x)
+            require(pixel(copy, x, 60, 3) >= pixel(copy, x - 1, 60, 3) &&
+                        pixel(copy, x, 60, 3) - pixel(copy, x - 1, 60, 3) <= 28,
+                    "Blur feathering contains a sharp alpha step.");
+        saveBytes(L"frosted-glass-original.png", png(source));
+        saveBytes(L"frosted-glass-preview.png", png(fog));
+    }
     runModelTests();
     auto source = Bitmap::create(160, 120);
     std::fill(source.pixels.begin(), source.pixels.end(), 255);

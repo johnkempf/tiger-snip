@@ -402,15 +402,103 @@ int wmain()
         require(lineCount(app.document.items[0]) == 2 &&
                     app.document.items[0].text == L"First line\r\nSecond line",
                 "Text reflow removed explicit line breaks.");
-        std::cout << "PASS\n";
+        for (int layout : {InterfaceClassic, InterfaceOrange})
+            for (float dpi : {1.0f, 1.5f, 2.0f})
+                for (bool framed : {false, true})
+                {
+                    command(layout);
+                    app.dpi = dpi;
+                    SetWindowPos(app.window, nullptr, 0, 0, static_cast<int>(1100 * dpi),
+                                 static_cast<int>(850 * dpi), SWP_NOZORDER | SWP_NOACTIVATE);
+                    app.exportOptions = {};
+                    app.document.clear();
+                    Annotation aligned;
+                    aligned.kind = Tool::Text;
+                    aligned.a = {120, 120};
+                    aligned.text = L"Wide heading\r\nShort";
+                    aligned.fontSize = 32;
+                    aligned.textWidth = 400;
+                    aligned.textFrame = framed;
+                    aligned.boxed = framed;
+                    app.graphics.measureText(aligned);
+                    app.document.items = {aligned};
+                    app.document.selected = 0;
+                    app.fit = true;
+                    updateView();
+                    beginTextEditing({}, 0);
+                    int centerX = -1, rightX = -1;
+                    for (int id : {TextAlignCenter, TextAlignRight, TextAlignLeft})
+                    {
+                        const auto editor = app.textEdit;
+                        command(id);
+                        require(app.textEdit == editor && app.document.editing(),
+                                "Alignment interrupted inline typing.");
+                        const auto style = GetWindowLongPtrW(editor, GWL_STYLE) & (ES_CENTER | ES_RIGHT);
+                        require(style == (id == TextAlignCenter ? ES_CENTER : id == TextAlignRight ? ES_RIGHT : ES_LEFT),
+                                "Inline editor did not adopt its alignment.");
+                        const auto shortLine = SendMessageW(editor, EM_POSFROMCHAR, 14, 0);
+                        require(shortLine != -1, "Cannot inspect inline text position.");
+                        const int glyphX = static_cast<short>(LOWORD(shortLine));
+                        if (id == TextAlignCenter) centerX = glyphX;
+                        else if (id == TextAlignRight) rightX = glyphX;
+                        else require(centerX > glyphX && rightX > centerX,
+                                     "Native inline glyphs did not follow alignment changes.");
+                        RECT format{};
+                        SendMessageW(editor, EM_GETRECT, 0, reinterpret_cast<LPARAM>(&format));
+                        const auto &item = app.document.items[0];
+                        const float padding = item.boxed ? 24 : 0;
+                        const float expectedWidth = id == TextAlignLeft ? item.textWidth
+                            : item.bounds().width() - padding;
+                        require(std::abs(format.right - std::ceil(expectedWidth * app.view.scale * app.dpi)) <= 1,
+                                "Inline alignment used a different text box from exported text.");
+                    }
+                    command(TextAlignCenter);
+                    verify(L"aligned-text-" + std::to_wstring(layout) + L"-" +
+                           std::to_wstring(static_cast<int>(dpi * 100)) + (framed ? L"-frame" : L"-natural"));
+                    const auto beforeCommit = app.graphics.exportImage(app.image, app.document.items, app.exportOptions);
+                    finishTextEditing();
+                    require(app.document.items[0].textAlignment == TextAlignment::Center &&
+                                app.graphics.exportImage(app.image, app.document.items, app.exportOptions).pixels == beforeCommit.pixels,
+                            "Alignment-only text edit was discarded or changed on commit.");
+                    require(app.document.undo() && app.document.items[0].textAlignment == TextAlignment::Left &&
+                                app.document.redo() && app.document.items[0].textAlignment == TextAlignment::Center,
+                            "Inline alignment undo/redo failed.");
+                    app.document.selected = 0;
+                    beginTextEditing({}, 0);
+                    command(TextAlignRight);
+                    finishTextEditing(true);
+                    require(app.document.items[0].textAlignment == TextAlignment::Center,
+                            "Canceling inline alignment did not restore the annotation.");
+                }
+        app.document.clear();
+        Annotation underGlass;
+        underGlass.kind = Tool::Text;
+        underGlass.a = {120, 120};
+        underGlass.text = L"Text beneath glass";
+        underGlass.boxed = true;
+        underGlass.textWidth = 240;
+        app.graphics.measureText(underGlass);
+        Annotation glass;
+        glass.kind = Tool::Rectangle; glass.style = 4;
+        glass.a = {140, 110}; glass.b = {400, 230};
+        app.document.items = {underGlass, glass};
+        app.document.selected = 0;
+        beginTextEditing({}, 0);
+        previewImage();
+        changeTextFormatting(48, true, true);
+        SetWindowTextW(app.textEdit, L"Changed box\r\nunder frosted glass");
+        updateTextFromEditor();
+        verify(L"text-beneath-glass");
+        finishTextEditing();
+        std::cout << "PASS: text editing, reflow, glass backdrop caching, and inline left/center/right alignment\n";
     }
     catch (const std::exception &exception)
     {
         std::cout << "FAIL: " << exception.what() << "\n";
         result = 1;
     }
-    if (app.window)
-        DestroyWindow(app.window);
+    if (app.window && IsWindow(app.window))
+        command(Exit);
     resetPreview();
     app.workspaceBrush.reset();
     app.target.reset();

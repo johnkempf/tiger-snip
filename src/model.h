@@ -59,6 +59,7 @@ enum class Tool
     Highlight
 };
 using Color = uint32_t;
+enum class TextAlignment : uint8_t { Left, Center, Right };
 constexpr Color rgb(unsigned r, unsigned g, unsigned b)
 {
     return r | (g << 8) | (b << 16);
@@ -87,12 +88,14 @@ struct Annotation
     bool textFrame = false;
     float textHeight = 0;
     bool bold = false, boxed = false;
+    TextAlignment textAlignment = TextAlignment::Left;
     bool curveFlipped = false;
     // Raster pieces share immutable pixels across moves, resizes and undo history.
     std::shared_ptr<const Bitmap> raster;
     bool whiteout = false; // Fixed white source patch underneath a lifted selection.
     std::vector<Rect> cutouts; // Removed fragments follow the remaining object during later edits.
     bool operator==(const Annotation &) const = default;
+    bool redaction() const { return kind == Tool::Rectangle && style == 4; }
     bool flipCurvedArrow();
     Point arrowSpine(float fraction) const;
     std::vector<Point> arrowContour() const;

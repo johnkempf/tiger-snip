@@ -73,8 +73,8 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
              app.graphics.smallFont.get());
         const float formattingLeft = layout.formatting.left;
         divider(formattingLeft - 10, formatTop + 11, formatTop + 31);
-        if (app.erasing || imageSelected())
-            text(imageSelected() ? L"Drag handles to resize" : L"Whole object",
+        if (app.erasing || imageSelected() || redactionMode())
+            text(imageSelected() || redactionMode() ? L"Drag handles to resize" : L"Whole object",
                  {formattingLeft, formatTop + 5, formattingLeft + 160, formatTop + 37}, Muted,
                  app.graphics.smallFont.get(), true);
         else
@@ -144,7 +144,7 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
         const bool accentSelection = available && on &&
                                      (toolButton || styleMenu || button.command == CropTool ||
                                       button.command == Eyedropper || button.command == TextBold ||
-                                      button.command == TextBox);
+                                      button.command == TextBox || textAlignmentCommand(button.command));
         const bool neutralSelection = available && on && !accentSelection;
         Color bg = accentSelection    ? uiSelected()
                    : neutralSelection  ? uiRaised()
@@ -251,6 +251,9 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
             text(button.label, {r.left + inset + 27, r.top, r.right - 4, r.bottom}, fg,
                  app.graphics.font.get());
         }
+        else if (textAlignmentCommand(button.command))
+            drawUIIcon(rt, brush, button.command,
+                       {(r.left + r.right) / 2 - 10, (r.top + r.bottom) / 2 - 10}, fg);
         else if (button.command == RecentSnips)
         {
             drawUIIcon(rt, brush, RecentSnips, {r.left + 8, (r.top + r.bottom) / 2 - 10}, fg);

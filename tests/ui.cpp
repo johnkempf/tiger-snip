@@ -1075,8 +1075,122 @@ int wmain()
             ShowWindow(app.window, SW_SHOWNOACTIVATE);
         }
         saveBytes(L"ui-empty.png", app.graphics.png(renderEditorPreview()));
+        // The new formatting controls fit both layouts at the minimum window size and each DPI.
+        app.image = fixture;
+        app.exportOptions = {};
+        command(AppearanceLight);
+        command(ThemePurple);
+        for (int layout : {InterfaceClassic, InterfaceOrange})
+            for (float dpi : {1.0f, 1.5f, 2.0f})
+                for (int width : {850, 1100})
+                {
+                    command(layout);
+                    app.dpi = dpi;
+                    SetWindowPos(app.window, nullptr, 0, 0, static_cast<int>(width * dpi),
+                                 static_cast<int>(850 * dpi), SWP_NOZORDER | SWP_NOACTIVATE);
+                    app.collapsedRows = 0;
+                    app.inspectorScroll = 0;
+                    app.document.clear();
+                    app.tool = Tool::Select;
+                    Annotation text;
+                    text.kind = Tool::Text;
+                    text.text = L"Wide heading\nShort";
+                    text.color = rgb(25, 25, 25);
+                    text.fontSize = 32;
+                    text.a = {150, 100};
+                    text.textWidth = 400;
+                    text.textFrame = true;
+                    app.graphics.measureText(text);
+                    app.document.items = {text};
+                    app.document.selected = 0;
+                    updateView();
+                    const auto beforeAlignment = text.bounds();
+                    if (!app.classicUI)
+                    {
+                        const auto inspector = inspectorLayout();
+                        app.inspectorScroll = std::max(0.0f, inspector.alignment.bottom - inspector.body.bottom + 6);
+                    }
+                    float previousX = -1;
+                    for (int id : {TextAlignLeft, TextAlignCenter, TextAlignRight})
+                    {
+                        const auto r = button(id);
+                        require(r.left >= 0 && r.right <= clientDips().right && r.height() >= 26,
+                                "Alignment control does not fit the window.");
+                        for (const auto &b : app.buttons)
+                            if (b.command != id)
+                                require(std::min(r.right, b.rect.right) <= std::max(r.left, b.rect.left) ||
+                                            std::min(r.bottom, b.rect.bottom) <= std::max(r.top, b.rect.top),
+                                        "Alignment control overlaps another button.");
+                        mouseDown(mouse({(r.left + r.right) / 2, (r.top + r.bottom) / 2}));
+                        mouseUp(mouse({(r.left + r.right) / 2, (r.top + r.bottom) / 2}));
+                        require(active(id) && app.document.items[0].textAlignment ==
+                                    static_cast<TextAlignment>(id - TextAlignLeft) &&
+                                    app.document.items[0].bounds() == beforeAlignment,
+                                "Alignment click changed the text frame or failed to select alignment.");
+                        auto shaped = app.graphics.textLayout(app.document.items[0]);
+                        float x = 0, y = 0;
+                        DWRITE_HIT_TEST_METRICS hit{};
+                        check(shaped->HitTestTextPosition(13, FALSE, &x, &y, &hit),
+                              "Cannot inspect aligned text.");
+                        require(x > previousX, "Text lines did not move left/center/right within the frame.");
+                        previousX = x;
+                    }
+                    require(app.document.undo() && app.document.items[0].textAlignment == TextAlignment::Center &&
+                                app.document.redo() && app.document.items[0].textAlignment == TextAlignment::Right,
+                            "Text alignment undo/redo failed.");
+                    app.document.selected = 0;
+                    command(TextAlignCenter);
+                    if (dpi == 1 && width == 1100)
+                        saveBytes(app.classicUI ? L"ui-alignment-top.png" : L"ui-alignment-side.png",
+                                  app.graphics.png(renderEditorPreview()));
+
+                    app.document.clear();
+                    app.image = app.graphics.flatten(fixture, page);
+                    command(styleCommand(Tool::Rectangle, 4));
+                    require(app.tool == Tool::Rectangle && redactionMode() &&
+                                !enabled(OpacitySlider) && !enabled(StrokeSlider) && !enabled(CustomColor),
+                            "Frosted glass exposed unrelated drawing controls.");
+                    app.opacities[static_cast<size_t>(Tool::Rectangle)] = .2f;
+                    const Point a{88.25f, 280.25f}, b{315.75f, 425.75f};
+                    mouseDown(mouse(app.view.toScreen(a)));
+                    mouseMove(mouse(app.view.toScreen(b)));
+                    mouseUp(mouse(app.view.toScreen(b)));
+                    require(app.document.items.size() == 1 && app.document.items[0].redaction() &&
+                                app.document.items[0].opacity == 1,
+                            "Drawing redaction inherited transparent shape opacity.");
+                    setPropertyValue(OpacitySlider, 10);
+                    require(app.document.items[0].opacity == 1 && propertyOpacity() == 1,
+                            "Redaction opacity could be reduced.");
+                    app.document.items[0].opacity = 0; // A faded shape preference must not weaken the blur.
+                    const auto covered = renderedExport();
+                    require(covered.pixels != app.image.pixels && previewImage().pixels == covered.pixels,
+                            "Frosted glass did not blur the backdrop consistently in preview/export.");
+                    require(app.graphics.decode(app.graphics.png(covered)).pixels == covered.pixels,
+                            "Saving frosted glass changed its pixels.");
+                    require(app.document.undo() && app.document.items.empty() && app.document.redo() &&
+                                app.document.items[0].redaction(), "Redaction undo/redo failed.");
+                    app.document.selected = 0;
+                    command(styleCommand(Tool::Rectangle, 0), true);
+                    require(!app.document.items[0].redaction(), "Cannot change redaction back to a normal shape.");
+                    command(styleCommand(Tool::Rectangle, 4), true);
+                    require(app.document.items[0].redaction() && app.document.items[0].opacity == 1,
+                            "Converting a shape to frosted glass did not enable the effect.");
+                    if (dpi == 1 && width == 1100)
+                        saveBytes(app.classicUI ? L"ui-redaction-top.png" : L"ui-redaction-side.png",
+                                  app.graphics.png(renderEditorPreview()));
+                }
+        app.textAlignment = TextAlignment::Right;
+        app.toolPreferencesDirty = true;
+        require(saveToolPreferences(), "Cannot save alignment/redaction preferences.");
+        app.textAlignment = TextAlignment::Left;
+        app.styles[static_cast<size_t>(Tool::Rectangle)] = 0;
+        loadToolPreferences();
+        require(app.textAlignment == TextAlignment::Right &&
+                    app.styles[static_cast<size_t>(Tool::Rectangle)] == 4,
+                "Alignment or redaction preset did not persist.");
         std::cout
-            << "PASS: complete modern settings/menus, overlay input isolation and shortcut recording, "
+            << "PASS: frosted glass preview/PNG/undo and alignment/layout/undo/persistence; "
+               "complete modern settings/menus, overlay input isolation and shortcut recording, "
                "three presets and light/dark in both layouts with identical exports, theme persistence, "
                "custom UI picker Apply/Cancel/validation/reload and remembered color, "
                "exact accent capture fills with readable labels/icons and border hover/press "
@@ -1097,8 +1211,8 @@ int wmain()
         std::cerr << "FAIL: " << e.what() << "\n";
         result = 1;
     }
-    if (app.window)
-        DestroyWindow(app.window);
+    if (app.window && IsWindow(app.window))
+        command(Exit);
     if (com)
         CoUninitialize();
     if (originalDesktop)
