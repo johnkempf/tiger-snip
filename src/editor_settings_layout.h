@@ -1,6 +1,6 @@
 // Settings are an editor overlay. Its controls share the existing command handlers.
-constexpr std::array<const wchar_t *, 7> SettingsPages = {
-    L"Appearance", L"General", L"Capture", L"Export", L"View", L"Actions", L"About"};
+constexpr std::array<const wchar_t *, 6> SettingsPages = {
+    L"Appearance", L"General", L"Capture", L"Saving & Export", L"View", L"About"};
 enum class SettingsControlKind
 {
     Navigation,
@@ -112,10 +112,10 @@ SettingsPanelLayout settingsPanelLayout()
             L"Compatibility mode for smoother updates on some PCs.");
         row(Startup, SettingsControlKind::Toggle, L"Run at sign-in",
             L"Keep Tiger Snip ready in the tray.");
-        row(SaveLocation, SettingsControlKind::Button, L"Save location",
-            app.saveFolder.empty() ? L"Default location \u00B7 Click to choose a folder"
-                                   : app.saveFolder,
-            82);
+        row(AutoCopy, SettingsControlKind::Toggle, L"Auto copy new snips",
+            L"Image captures copy automatically. Text always copies with a preview.");
+        row(KeepAnnotationToolActive, SettingsControlKind::Toggle, L"Keep annotation tool active",
+            L"Place more shapes, arrows, lines, checks, or text without switching back to Select.", 90);
         row(0, SettingsControlKind::Text, L"Preferences are saved for your Windows account.", L"",
             48);
         break;
@@ -140,11 +140,13 @@ SettingsPanelLayout settingsPanelLayout()
             L"other apps. F12 is reserved.\n\n"
             L"If Print Screen opens Windows' capture tool, turn off its shortcut in "
             L"Windows Settings > Accessibility > Keyboard.", 126);
-        row(AutoCopy, SettingsControlKind::Toggle, L"Auto copy new snips",
-            L"Image captures copy automatically. Text always copies with a preview.");
         break;
     case 3: {
-        heading(L"Save format");
+        row(SaveLocation, SettingsControlKind::Button, L"Save location",
+            app.saveFolder.empty() ? L"Default location \u00B7 Click to choose a folder"
+                                   : app.saveFolder,
+            82);
+        heading(L"Default file type");
         choices(SaveFormatPng, L"PNG", L"JPG");
         row(0, SettingsControlKind::Text,
             app.exportOptions.jpg ? L"Professional Border is disabled for JPG."
@@ -202,27 +204,6 @@ SettingsPanelLayout settingsPanelLayout()
         row(Fit, SettingsControlKind::Button, L"Fit image", L"Center the complete screenshot.", 56);
         row(Actual, SettingsControlKind::Button, L"Actual size (100%)", L"Show one image pixel per screen pixel.", 56);
         break;
-    case 5:
-        for (auto [id, label] : std::array<std::pair<int, const wchar_t *>, 17>{
-                 {{NewSnip, L"New snip"},
-                  {InstantSnip, L"Capture all monitors"},
-                  {TextSnip, L"Copy text from an area"},
-                  {RecentSnips, L"Recent snips"},
-                  {Copy, L"Copy image"},
-                  {Paste, L"Paste image"},
-                  {CopySnipText, L"Copy text from snip"},
-                  {Save, L"Save image"},
-                  {SaveAs, L"Save as"},
-                  {Undo, L"Undo"},
-                  {Redo, L"Redo"},
-                  {DeleteSelected, L"Delete selected annotation"},
-                  {Clear, L"Clear annotations"},
-                  {CropImageChoice, L"Crop image"},
-                  {SelectPixelsChoice, L"Select area"},
-                  {EraserTool, L"Eraser"},
-                  {Exit, L"Exit Tiger Snip"}}})
-            row(id, SettingsControlKind::Button, label, L"", 42);
-        break;
     default:
         row(0, SettingsControlKind::Heading, L"Tiger Snip 1.0.2", L"", 36);
         row(0, SettingsControlKind::Text, L"Capture. Annotate. Share.", L"Developed by Jack Kempf",
@@ -235,7 +216,7 @@ SettingsPanelLayout settingsPanelLayout()
         row(0, SettingsControlKind::Text, L"Choose tools from the toolbar.",
             L"Plain letter keys do not activate tools.", 64);
         row(0, SettingsControlKind::Text, L"Close the window to keep Tiger Snip in the tray.",
-            L"Actions \u2192 Exit quits the app.", 64);
+            L"App menu \u2192 Exit Tiger Snip quits the app. Classic UI: File \u2192 Exit.", 64);
         break;
     }
     l.maxScroll = std::max(0.0f, y - l.body.height());

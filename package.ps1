@@ -9,7 +9,6 @@ $taskStage = Join-Path $taskRoot 'build\package'
 New-Item -ItemType Directory -Force -Path $taskStage | Out-Null
 $taskPayload = @(
     @{ Id = 'AppExe'; Source = 'dist\Tiger Snip.exe'; Name = 'TIGERS~1.EXE|Tiger Snip.exe' },
-    @{ Id = 'QuickStart'; Source = 'dist\Quick Start.txt'; Name = 'QUICKS~1.TXT|Quick Start.txt' },
     @{ Id = 'LLVMNotice'; Source = 'dist\LLVM.txt'; Name = 'LLVM.txt' },
     @{ Id = 'MinGWNotice'; Source = 'dist\MinGW-runtime.txt'; Name = 'MINGWR~1.TXT|MinGW-runtime.txt' }
 )

@@ -160,11 +160,9 @@ int wmain()
                                 700, nullptr, createMenu(), app.instance, nullptr),
                 "Cannot create editor.");
         auto checked = [&] {
-            require(GetMenu(app.window) != nullptr, "Private editor is missing its Settings menu.");
-            updateMenus();
-            return (GetMenuState(GetMenu(app.window), AutoCopy, MF_BYCOMMAND) & MF_CHECKED) != 0;
+            return settingsControlSelected(AutoCopy);
         };
-        require(checked(), "Settings menu must show auto copy checked by default.");
+        require(checked(), "Preferences must show auto copy enabled by default.");
         auto image = Bitmap::create(96, 64);
         for (size_t i = 0; i < image.pixels.size(); i += 4)
         {
@@ -284,7 +282,7 @@ int wmain()
         require(!app.dirty, "Manual Copy must include annotations and clear dirty state.");
         const auto copiedEdits = renderedExport();
         command(AutoCopy);
-        require(!app.autoCopy && !checked(), "Auto copy menu toggle must turn it off.");
+        require(!app.autoCopy && !checked(), "Auto copy preference toggle must turn it off.");
         loadToolPreferences();
         require(!app.autoCopy, "Disabled auto copy must persist on reload.");
         const auto beforeCapture = GetClipboardSequenceNumber();
@@ -611,7 +609,7 @@ int wmain()
                 .count();
         clipboardMatches(renderedExport());
         std::cout << "4K capture completion including auto copy: " << elapsed << " ms\n";
-        std::cout << "PASS: default-on auto copy, Settings checkmark, persisted OFF/ON, new and "
+        std::cout << "PASS: default-on auto copy, Preferences toggle, persisted OFF/ON, new and "
                      "selection "
                      "captures, PNG/DIB export, already-copied snip Ctrl+C and repeated copy, "
                      "inert plain letters, annotations, disabled capture, "
@@ -630,7 +628,7 @@ int wmain()
         result = 1;
     }
     if (app.window && IsWindow(app.window))
-        DestroyWindow(app.window);
+        command(Exit);
     resetPreview();
     app.workspaceBrush.reset();
     app.target.reset();

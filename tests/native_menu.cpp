@@ -76,8 +76,8 @@ int wmain()
         std::cerr << "FAIL: " << e.what() << "\n";
         result = 1;
     }
-    if (app.window)
-        DestroyWindow(app.window);
+    if (app.window && IsWindow(app.window))
+        command(Exit);
     if (com)
         CoUninitialize();
     return result;

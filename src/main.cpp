@@ -131,8 +131,10 @@ enum Command
     TextAlignLeft,
     TextAlignCenter,
     TextAlignRight,
+    KeepAnnotationToolActive,
+    EditorMenu,
     SettingsPageFirst = 2100,
-    SettingsPageLast = SettingsPageFirst + 6,
+    SettingsPageLast = SettingsPageFirst + 5,
     ColorFirst = PaletteFirst,
     ShowEditor = 1200,
     CircleStyleMenu = 1300,
@@ -242,8 +244,6 @@ struct Application
     bool textNew = false, syncingText = false;
     Annotation textBefore;
     HMENU shapeMenu = nullptr;
-    HMENU interfaceMenu = nullptr;
-    HMENU colorThemeMenu = nullptr, appearanceMenu = nullptr;
     HBRUSH menuBackground = nullptr;
     Graphics graphics;
     ExportOptions exportOptions;
@@ -308,12 +308,9 @@ struct Application
     std::jthread textWorker;
     bool toolPreferencesDirty = false, shortcutsDirty = false, rendererPreferencesDirty = false;
     std::string preferenceError;
-    bool autoCopy = true;
+    bool autoCopy = true, keepAnnotationToolActive = false;
     bool exportPreferencesDirty = false;
     ULONGLONG copyFlashStarted = 0, copyNoticeStarted = 0;
-    HMENU logoMenu = nullptr;
-    HMENU professionalMenu = nullptr;
-    HMENU saveFormatMenu = nullptr;
     unsigned collapsedRows = 0;
     bool layoutPreferencesDirty = false, fullScreen = false, interactiveResize = false;
     bool menuHidden = false;
@@ -666,6 +663,8 @@ void loadToolPreferences()
     app.palette = loadPalette(app.iniPath, {Palette.begin(), Palette.end()});
     app.paletteDirty = false;
     app.autoCopy = preferenceUInt(app.iniPath, L"Settings", L"AutoCopy", 1) != 0;
+    app.keepAnnotationToolActive =
+        preferenceUInt(app.iniPath, L"Settings", L"KeepAnnotationToolActive", 0) == 1;
     if (!app.rendererSpecified)
         app.softwareRendering =
             preferenceUInt(app.iniPath, L"Settings", L"SoftwareRendering", 0) != 0;
@@ -1854,6 +1853,8 @@ void buildButtons()
             add(Undo, L"", 32, 14);
             x = 238;
             add(Redo, L"", 32, 14);
+            x = 278;
+            add(EditorMenu, L"\u2026", 32, 14);
             x = client.right - 340;
             add(RecentSnips, L"Recent", 112, 14);
             x += 12;
@@ -2200,7 +2201,10 @@ void buildButtons()
                 hint = L"Drag to adjust annotation opacity; Esc cancels";
                 break;
             case AppMenu:
-                hint = L"Settings and app actions (F10)";
+                hint = L"Preferences (F10)";
+                break;
+            case EditorMenu:
+                hint = L"App menu";
                 break;
             case CaptureMenu:
                 hint = L"Choose area or full-desktop capture";
@@ -2276,7 +2280,7 @@ bool enabled(int id)
         return hasImage() && selected();
     if (id == Clear)
         return hasImage() && !app.document.items.empty();
-    if (app.settingsPanelOpen && (id == ProfessionalBlur || id == ProfessionalRounded))
+    if (id == ProfessionalBlur || id == ProfessionalRounded)
         return app.exportOptions.professionalBorder;
     if (id == StrokeSlider || id == OpacitySlider ||
         (id >= StrokePresetFirst && id <= StrokePresetThird))
@@ -3271,7 +3275,12 @@ void finishTextEditing(bool cancel, bool selectAfter)
         }
     }
     if (selectAfter && !cancel)
-        app.tool = Tool::Select;
+    {
+        if (!app.keepAnnotationToolActive)
+            app.tool = Tool::Select;
+        else
+            app.document.selected = -1;
+    }
     SetFocus(app.window);
     repaint();
 }
@@ -4333,8 +4342,8 @@ void mouseUp(LPARAM lp)
             item.a = a;
             item.b = a + Point{size, item.kind == Tool::Line ? 0.0f : size};
         }
-        // Shape tools switch to selection after placement so moving the new object takes one drag.
-        if (item.kind != Tool::Pen && item.kind != Tool::Highlight)
+        // Repeated placement leaves the tool ready and its properties independent of the last item.
+        if (!app.keepAnnotationToolActive && item.kind != Tool::Pen && item.kind != Tool::Highlight)
             app.tool = Tool::Select;
         else
             app.document.selected = -1;
@@ -4785,11 +4794,7 @@ void trayMenu()
     AppendMenuW(menu, MF_STRING, InstantSnip, L"Capture all monitors now");
     AppendMenuW(menu, MF_STRING, TextSnip, L"Copy text from an area");
     AppendMenuW(menu, MF_STRING, ShowEditor, L"Open editor");
-    AppendMenuW(menu, MF_STRING, Preferences, L"Settings...");
-    AppendMenuW(menu, MF_STRING, Settings, L"Keyboard shortcuts...");
-    AppendMenuW(menu, MF_STRING | (app.autoCopy ? MF_CHECKED : 0), AutoCopy,
-                L"Auto copy new snips");
-    AppendMenuW(menu, MF_STRING, SaveLocation, L"Save location...");
+    AppendMenuW(menu, MF_STRING, Preferences, L"Preferences...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, Exit, L"Exit Tiger Snip");
     POINT point{};
@@ -5262,6 +5267,28 @@ void command(int id, bool editSelectedStyle)
             command(choice);
         break;
     }
+    case EditorMenu: {
+        HMENU menu = CreatePopupMenu();
+        if (!menu)
+            break;
+        AppendMenuW(menu, MF_STRING, Preferences, L"Preferences...");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING | (enabled(CopySnipText) ? 0 : MF_GRAYED), CopySnipText, L"Copy text from snip");
+        AppendMenuW(menu, MF_STRING | (enabled(Clear) ? 0 : MF_GRAYED), Clear, L"Clear annotations");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, FullScreen, app.fullScreen ? L"Exit full screen\tF11" : L"Full screen\tF11");
+        AppendMenuW(menu, MF_STRING, About, L"About and shortcuts");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(menu, MF_STRING, Exit, L"Exit Tiger Snip");
+        POINT anchor{static_cast<LONG>(278 * app.dpi), static_cast<LONG>(54 * app.dpi)};
+        ClientToScreen(app.window, &anchor);
+        const int choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, anchor.x, anchor.y,
+                                          0, app.window, nullptr);
+        DestroyMenu(menu);
+        if (choice)
+            command(choice);
+        break;
+    }
     case Preferences:
     case AppMenu: {
         if (app.settingsPanelOpen)
@@ -5391,6 +5418,13 @@ void command(int id, bool editSelectedStyle)
         break;
     case CopySnipText:
         copySnipText();
+        break;
+    case KeepAnnotationToolActive:
+        commitPreferences(app.iniPath, {{L"Settings", L"KeepAnnotationToolActive",
+                                       app.keepAnnotationToolActive ? L"0" : L"1"}});
+        app.keepAnnotationToolActive = !app.keepAnnotationToolActive;
+        status(app.keepAnnotationToolActive ? L"Annotation tools stay active after placement"
+                                            : L"Annotation tools return to Select after placement");
         break;
     case AutoCopy:
         commitPreferences(app.iniPath, {{L"Settings", L"AutoCopy", app.autoCopy ? L"0" : L"1"}});
@@ -6025,53 +6059,7 @@ HMENU createMenu()
     AppendMenuW(view, MF_STRING, ToggleActions, L"&Command bar");
     AppendMenuW(view, MF_STRING, ToggleTools, L"&Tool rail");
     AppendMenuW(view, MF_STRING, ToggleFormatting, L"&Properties panel");
-    AppendMenuW(settings, MF_STRING, Preferences, L"&Settings...");
-    AppendMenuW(settings, MF_STRING, Settings, L"&Keyboard shortcuts...");
-    app.interfaceMenu = CreatePopupMenu();
-    AppendMenuW(app.interfaceMenu, MF_STRING, InterfaceClassic, L"&Top toolbars (classic UI)");
-    AppendMenuW(app.interfaceMenu, MF_STRING, InterfaceOrange, L"&Side panels (new UI)");
-    AppendMenuW(settings, MF_POPUP, reinterpret_cast<UINT_PTR>(app.interfaceMenu),
-                L"&Toolbar layout");
-    app.colorThemeMenu = CreatePopupMenu();
-    for (int i : PresetThemeIndices)
-        AppendMenuW(app.colorThemeMenu, MF_STRING, ThemePurple + i, ThemeNames[i]);
-    AppendMenuW(app.colorThemeMenu, MF_STRING, ThemeCustom, L"&Custom color...");
-    AppendMenuW(settings, MF_POPUP, reinterpret_cast<UINT_PTR>(app.colorThemeMenu),
-                L"Color &theme");
-    app.appearanceMenu = CreatePopupMenu();
-    AppendMenuW(app.appearanceMenu, MF_STRING, AppearanceLight, L"&Light");
-    AppendMenuW(app.appearanceMenu, MF_STRING, AppearanceDark, L"&Dark");
-    AppendMenuW(settings, MF_POPUP, reinterpret_cast<UINT_PTR>(app.appearanceMenu), L"&Appearance");
-    AppendMenuW(settings, MF_STRING, AutoCopy, L"Auto &copy new snips");
-    AppendMenuW(settings, MF_STRING, RenderingSettings, L"&Rendering...");
-    AppendMenuW(settings, MF_STRING, SaveLocation, L"Save &location...");
-    app.saveFormatMenu = CreatePopupMenu();
-    AppendMenuW(app.saveFormatMenu, MF_STRING, SaveFormatPng, L"&PNG (keeps transparency)");
-    AppendMenuW(app.saveFormatMenu, MF_STRING, SaveFormatJpg, L"&JPG (no Professional Border)");
-    AppendMenuW(settings, MF_POPUP, reinterpret_cast<UINT_PTR>(app.saveFormatMenu), L"Save &format");
-    AppendMenuW(settings, MF_STRING, Startup, L"Run at &sign-in");
-    AppendMenuW(settings, MF_SEPARATOR, 0, nullptr);
-    app.professionalMenu = CreatePopupMenu();
-    AppendMenuW(app.professionalMenu, MF_STRING, ProfessionalBorder, L"&Enabled");
-    AppendMenuW(app.professionalMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(app.professionalMenu, MF_STRING, ProfessionalBlur, L"&Blur");
-    AppendMenuW(app.professionalMenu, MF_STRING, ProfessionalRounded, L"&Rounded corners");
-    AppendMenuW(settings, MF_POPUP, reinterpret_cast<UINT_PTR>(app.professionalMenu),
-                L"&Professional Border");
-    app.logoMenu = CreatePopupMenu();
-    AppendMenuW(app.logoMenu, MF_STRING, SamtecLogo, L"&Enabled");
-    AppendMenuW(app.logoMenu, MF_SEPARATOR, 0, nullptr);
-    for (int style = 0; style < 6; ++style)
-    {
-        AppendMenuW(app.logoMenu, MF_OWNERDRAW, LogoStyleFirst + style,
-                    reinterpret_cast<LPCWSTR>(style + 1));
-        MENUITEMINFOW label{};
-        label.cbSize = sizeof(label);
-        label.fMask = MIIM_STRING;
-        label.dwTypeData = const_cast<LPWSTR>(LogoStyleNames[style]);
-        SetMenuItemInfoW(app.logoMenu, LogoStyleFirst + style, FALSE, &label);
-    }
-    AppendMenuW(settings, MF_POPUP, reinterpret_cast<UINT_PTR>(app.logoMenu), L"Samtec &Logo");
+    AppendMenuW(settings, MF_STRING, Preferences, L"&Preferences...");
     AppendMenuW(help, MF_STRING, About, L"&About and shortcuts");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
     AppendMenuW(bar, MF_POPUP, reinterpret_cast<UINT_PTR>(edit), L"&Edit");
@@ -6083,14 +6071,6 @@ HMENU createMenu()
 void updateMenus()
 {
     HMENU menu = app.fullScreen || app.menuHidden ? app.windowedMenu : GetMenu(app.window);
-    CheckMenuRadioItem(app.interfaceMenu, InterfaceClassic, InterfaceOrange,
-                       app.classicUI ? InterfaceClassic : InterfaceOrange, MF_BYCOMMAND);
-    CheckMenuRadioItem(app.colorThemeMenu, ThemePurple, ThemeCustom, ThemePurple + app.colorTheme,
-                       MF_BYCOMMAND);
-    CheckMenuRadioItem(app.appearanceMenu, AppearanceLight, AppearanceDark,
-                       app.darkTheme ? AppearanceDark : AppearanceLight, MF_BYCOMMAND);
-    CheckMenuRadioItem(app.saveFormatMenu, SaveFormatPng, SaveFormatJpg,
-                       app.exportOptions.jpg ? SaveFormatJpg : SaveFormatPng, MF_BYCOMMAND);
     const wchar_t *labels[] = {app.classicUI ? L"&Actions" : L"&Command bar",
                                app.classicUI ? L"&Tools and shapes" : L"&Tool rail",
                                app.classicUI ? L"&Color and size" : L"&Properties panel"};
@@ -6102,37 +6082,11 @@ void updateMenus()
         label.dwTypeData = const_cast<LPWSTR>(labels[row]);
         SetMenuItemInfoW(menu, ToggleActions + row, FALSE, &label);
     }
-    CheckMenuItem(menu, AutoCopy, MF_BYCOMMAND | (app.autoCopy ? MF_CHECKED : MF_UNCHECKED));
     for (int row = 0; row < 3; ++row)
         CheckMenuItem(menu, ToggleActions + row,
                       MF_BYCOMMAND |
                           ((app.collapsedRows & (1U << row)) ? MF_UNCHECKED : MF_CHECKED));
     CheckMenuItem(menu, FullScreen, MF_BYCOMMAND | (app.fullScreen ? MF_CHECKED : MF_UNCHECKED));
-    CheckMenuItem(menu, ProfessionalBorder,
-                  MF_BYCOMMAND |
-                      (settingsControlSelected(ProfessionalBorder) ? MF_CHECKED : MF_UNCHECKED));
-    MENUITEMINFOW borderLabel{};
-    borderLabel.cbSize = sizeof(borderLabel);
-    borderLabel.fMask = MIIM_STRING;
-    borderLabel.dwTypeData = const_cast<wchar_t *>(app.exportOptions.jpg
-                                 ? L"Unavailable for JPG (requires PNG)" : L"&Enabled");
-    SetMenuItemInfoW(app.professionalMenu, ProfessionalBorder, FALSE, &borderLabel);
-    EnableMenuItem(menu, ProfessionalBorder,
-                   MF_BYCOMMAND | (app.exportOptions.jpg ? MF_GRAYED : MF_ENABLED));
-    CheckMenuItem(menu, ProfessionalBlur,
-                  MF_BYCOMMAND | (settingsControlSelected(ProfessionalBlur) ? MF_CHECKED : MF_UNCHECKED));
-    CheckMenuItem(menu, ProfessionalRounded,
-                  MF_BYCOMMAND |
-                      (settingsControlSelected(ProfessionalRounded) ? MF_CHECKED : MF_UNCHECKED));
-    for (int id : {ProfessionalBlur, ProfessionalRounded})
-        EnableMenuItem(menu, id,
-                       MF_BYCOMMAND |
-                           (!app.exportOptions.jpg && app.exportOptions.professionalBorder
-                                ? MF_ENABLED : MF_GRAYED));
-    CheckMenuItem(menu, SamtecLogo,
-                  MF_BYCOMMAND | (app.exportOptions.samtecLogo ? MF_CHECKED : MF_UNCHECKED));
-    CheckMenuRadioItem(app.logoMenu, LogoStyleFirst, LogoStyleFirst + 5,
-                       LogoStyleFirst + app.exportOptions.samtecStyle, MF_BYCOMMAND);
     auto enable = [&](int id, bool yes) {
         EnableMenuItem(menu, id, MF_BYCOMMAND | (yes ? MF_ENABLED : MF_GRAYED));
     };
@@ -6145,7 +6099,6 @@ void updateMenus()
     enable(CopySelected, selected() && hasImage());
     enable(RecentSnips, enabled(RecentSnips));
     enable(Clear, !app.document.items.empty());
-    CheckMenuItem(menu, Startup, MF_BYCOMMAND | (startupEnabled() ? MF_CHECKED : MF_UNCHECKED));
 }
 void settingsPanelShortcut(WORD shortcut)
 {
@@ -7376,8 +7329,8 @@ void testRenderingSettings()
         if (!test.handled || !test.error.empty())
             throw std::runtime_error("Rendering dialog test failed: " + test.error);
     };
-    if (GetMenuState(GetMenu(app.window), RenderingSettings, MF_BYCOMMAND) == static_cast<UINT>(-1))
-        throw std::runtime_error("Rendering settings are missing from the menu.");
+    if (GetMenuState(GetMenu(app.window), Preferences, MF_BYCOMMAND) == static_cast<UINT>(-1))
+        throw std::runtime_error("Preferences are missing from the menu.");
     if (!setSoftwareRendering(false))
         throw std::runtime_error("Cannot establish rendering test settings.");
     dialog(true, IDOK, L"smoke-test-rendering-software.png");
@@ -9218,8 +9171,6 @@ void CALLBACK smokeShapeMenuTimer(HWND hwnd, UINT, UINT_PTR id, DWORD)
             try
             {
                 RECT first{}, last{};
-                const bool logo = app.shapeMenu == app.logoMenu;
-                const bool professional = app.shapeMenu == app.professionalMenu;
                 const int count = GetMenuItemCount(app.shapeMenu);
                 if (GetMenuItemID(app.shapeMenu, 0) ==
                     static_cast<UINT>(styleCommand(Tool::Check, 0)))
@@ -9231,15 +9182,11 @@ void CALLBACK smokeShapeMenuTimer(HWND hwnd, UINT, UINT_PTR id, DWORD)
                             static_cast<UINT>(styleCommand(Tool::Check, style)))
                             throw std::runtime_error("Check/X menu command or order is incorrect.");
                 }
-                if (count < 3 || !GetMenuItemRect(hwnd, app.shapeMenu, logo ? 2 : 0, &first) ||
+                if (count < 3 || !GetMenuItemRect(hwnd, app.shapeMenu, 0, &first) ||
                     !GetMenuItemRect(hwnd, app.shapeMenu, count - 1, &last) ||
-                    first.right - first.left < (logo           ? 320
-                                                : professional ? 96
-                                                               : 184) *
+                    first.right - first.left < 184 *
                                                    app.dpi ||
-                    first.bottom - first.top < (logo           ? 72
-                                                : professional ? 18
-                                                               : 48) *
+                    first.bottom - first.top < 48 *
                                                    app.dpi)
                     throw std::runtime_error("Visual shape menu entries are missing or too small.");
                 const auto pixels = captureDesktop(first.left, first.top, first.right - first.left,
@@ -10482,8 +10429,7 @@ int applicationMain(HINSTANCE instance, int show)
                     updateMenus();
                     if (app.exportOptions.professionalBorder != border ||
                         !app.exportPreferencesDirty ||
-                        bool(GetMenuState(GetMenu(window), ProfessionalBorder, MF_BYCOMMAND) &
-                             MF_CHECKED) != border)
+                        settingsControlSelected(ProfessionalBorder) != border)
                         throw std::runtime_error(
                             "Professional Border Settings toggle or checkmark failed.");
                     const auto exported = renderedExport();
@@ -10505,8 +10451,7 @@ int applicationMain(HINSTANCE instance, int show)
                 }
                 command(ProfessionalBorder); // Leave ON to verify saved preferences across process
                                              // exit.
-                if (GetMenuItemCount(app.professionalMenu) != 4 ||
-                    !app.exportOptions.professionalBlur || !app.exportOptions.professionalRounded)
+                if (!app.exportOptions.professionalBlur || !app.exportOptions.professionalRounded)
                     throw std::runtime_error(
                         "Enabling Professional Border must enable blur and rounded corners.");
                 for (bool blur : {false, true})
@@ -10518,12 +10463,8 @@ int applicationMain(HINSTANCE instance, int show)
                             command(ProfessionalRounded);
                         updateMenus();
                         if (!app.exportOptions.professionalBorder ||
-                            bool(
-                                GetMenuState(app.professionalMenu, ProfessionalBlur, MF_BYCOMMAND) &
-                                MF_CHECKED) != blur ||
-                            bool(GetMenuState(app.professionalMenu, ProfessionalRounded,
-                                              MF_BYCOMMAND) &
-                                 MF_CHECKED) != rounded)
+                            settingsControlSelected(ProfessionalBlur) != blur ||
+                            settingsControlSelected(ProfessionalRounded) != rounded)
                             throw std::runtime_error(
                                 "Professional Border component menu checkmarks failed.");
                         const auto exported = renderedExport();
@@ -10545,10 +10486,7 @@ int applicationMain(HINSTANCE instance, int show)
                 command(ProfessionalRounded);
                 command(ProfessionalBorder);
                 updateMenus();
-                if (!(GetMenuState(app.professionalMenu, ProfessionalBlur, MF_BYCOMMAND) &
-                      MF_GRAYED) ||
-                    !(GetMenuState(app.professionalMenu, ProfessionalRounded, MF_BYCOMMAND) &
-                      MF_GRAYED))
+                if (enabled(ProfessionalBlur) || enabled(ProfessionalRounded))
                     throw std::runtime_error(
                         "Disabled professional components should be unavailable in the submenu.");
                 command(ProfessionalBorder);
@@ -10556,27 +10494,12 @@ int applicationMain(HINSTANCE instance, int show)
                     throw std::runtime_error(
                         "Re-enabling Professional Border lost the saved component choices.");
                 command(ProfessionalRounded); // Use both effects for the remaining export checks.
-                smokeMenuPreviewPath = L"smoke-test-professional-menu.png";
-                smokeMenuPreviewError.clear();
-                updateMenus();
-                app.shapeMenu = app.professionalMenu;
-                if (!SetTimer(window, 99, 100, smokeShapeMenuTimer))
-                    throw std::runtime_error("Cannot inspect the Professional Border submenu.");
-                POINT professionalAnchor{20, 40};
-                ClientToScreen(window, &professionalAnchor);
-                SetForegroundWindow(window);
-                TrackPopupMenu(app.professionalMenu, TPM_RETURNCMD | TPM_RIGHTBUTTON,
-                               professionalAnchor.x, professionalAnchor.y, 0, window, nullptr);
-                app.shapeMenu = nullptr;
-                if (!smokeMenuPreviewError.empty())
-                    throw std::runtime_error(smokeMenuPreviewError);
                 for (bool logo : {true, false})
                 {
                     SendMessageW(window, WM_COMMAND, SamtecLogo, 0);
                     updateMenus();
                     if (app.exportOptions.samtecLogo != logo ||
-                        bool(GetMenuState(GetMenu(window), SamtecLogo, MF_BYCOMMAND) &
-                             MF_CHECKED) != logo)
+                        settingsControlSelected(SamtecLogo) != logo)
                         throw std::runtime_error(
                             "Samtec Logo Settings toggle or checkmark failed.");
                     const auto exported = renderedExport();
@@ -10593,16 +10516,12 @@ int applicationMain(HINSTANCE instance, int show)
                         throw std::runtime_error("PNG Save did not honor the Samtec Logo setting.");
                 }
                 command(SamtecLogo); // Verify the logo setting survives close and full exit.
-                if (GetMenuItemCount(app.logoMenu) != 8)
-                    throw std::runtime_error(
-                        "Samtec Logo submenu must contain Enabled and six styles.");
                 for (int style = 0; style < 6; ++style)
                 {
                     command(LogoStyleFirst + style);
                     updateMenus();
                     if (!app.exportOptions.samtecLogo || app.exportOptions.samtecStyle != style ||
-                        !(GetMenuState(app.logoMenu, LogoStyleFirst + style, MF_BYCOMMAND) &
-                          MF_CHECKED))
+                        !settingsControlSelected(LogoStyleFirst + style))
                         throw std::runtime_error(
                             "Samtec Logo style selection or radio indicator failed.");
                     const auto exported = renderedExport();
@@ -10614,19 +10533,6 @@ int applicationMain(HINSTANCE instance, int show)
                     if (app.graphics.decode(bytes).pixels != exported.pixels)
                         throw std::runtime_error("Save PNG did not honor a Samtec logo style.");
                 }
-                smokeMenuPreviewPath = L"smoke-test-samtec-menu.png";
-                smokeMenuPreviewError.clear();
-                app.shapeMenu = app.logoMenu;
-                if (!SetTimer(window, 99, 100, smokeShapeMenuTimer))
-                    throw std::runtime_error("Cannot inspect the Samtec style menu.");
-                POINT menuAnchor{20, 40};
-                ClientToScreen(window, &menuAnchor);
-                SetForegroundWindow(window);
-                TrackPopupMenu(app.logoMenu, TPM_RETURNCMD | TPM_RIGHTBUTTON, menuAnchor.x,
-                               menuAnchor.y, 0, window, nullptr);
-                app.shapeMenu = nullptr;
-                if (!smokeMenuPreviewError.empty())
-                    throw std::runtime_error(smokeMenuPreviewError);
                 const auto previewTestOptions = app.exportOptions;
                 const auto previewTestView = app.view;
                 const bool previewTestFit = app.fit;
@@ -10880,7 +10786,6 @@ int applicationMain(HINSTANCE instance, int show)
                 const auto previousSavePath = app.savePath;
                 setSaveFolder(saveTestFolder);
                 if (app.savePath != previousSavePath ||
-                    GetMenuState(GetMenu(window), SaveLocation, MF_BYCOMMAND) == UINT(-1) ||
                     initialSavePath(L"C:\\old-folder\\example.png") !=
                         (std::filesystem::path(saveTestFolder) / L"example.png").wstring())
                     throw std::runtime_error(

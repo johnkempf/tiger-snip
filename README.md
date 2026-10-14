@@ -28,16 +28,16 @@ Saved selections of the retired Orange preset switch to Purple; saved custom col
 
 ## Use
 
-Click **New snip** and drag a rectangle. **Ctrl+C** copies a selected annotation; **Ctrl+V** pastes an editable duplicate. With nothing selected, **Ctrl+C** copies the whole image. The toolbar **Copy** button always copies the whole image. Press **Ctrl+S** to save. See [Quick Start](dist/Quick%20Start.txt) for the controls.
+Click **New snip** and drag a rectangle. **Ctrl+C** copies a selected annotation; **Ctrl+V** pastes an editable duplicate. With nothing selected, **Ctrl+C** copies the whole image. The toolbar **Copy** button always copies the whole image. Press **Ctrl+S** to save.
 **Ctrl+S**, **Ctrl+Shift+S**, and the top-right **Save as** button always open the modern
 Windows save picker, even after you have saved the snip. It starts in your current
-**Settings → General → Save location**, so you can choose another folder for each copy.
-Choose **PNG** or **JPG** under **Settings → Export → Save format**. PNG is the default.
+**Preferences → Saving & Export → Save location**, so you can choose another folder for each copy.
+Choose **PNG** or **JPG** under **Preferences → Saving & Export → Default file type**. PNG is the default.
 JPG disables Professional Border, including blur and rounded corners, because it does
 not support transparency. Switching back to PNG restores your previous border choices.
 **Save as type** also offers both formats. Choosing JPG there omits the border, blur,
 and rounded corners for that file; choosing PNG uses your remembered border choices.
-The dropdown does not change the default format in Settings or the editor preview.
+The dropdown does not change the default format in Preferences or the editor preview.
 The capture icon on the welcome screen also starts a snip. **Recent** keeps the last ten captures;
 Right-click the open snip or a Recent thumbnail for **Copy**, **Save**, and **Save As**.
 Recent actions include annotations and export effects without reopening the capture.
@@ -57,12 +57,12 @@ A small **Text copied** popup previews the exact text for three seconds. Hover t
 visible; click to dismiss. Long previews are shortened, while the clipboard contains all
 recognized lines. **Esc** cancels; a selection with no text leaves your clipboard unchanged.
 The editor and current snip are preserved. Change or disable this shortcut under
-**Settings → Capture**, or in the tray's **Keyboard shortcuts** dialog. The capture menu
-also offers **Copy text from an area**; **Settings → Actions → Copy text from snip** extracts
+**Preferences → Capture**. The capture menu
+also offers **Copy text from an area**; **App menu → Copy text from snip** (Classic UI: **File**) extracts
 text from the current screenshot. OCR can confuse small or blurry characters, so check
 the preview for exact identifiers and zoom in before selecting when needed.
 
-**Settings → Toolbar layout** switches immediately between **Top toolbars** (the original ribbon)
+**Preferences → Appearance → Interface layout** switches immediately between **Top toolbars** (the original ribbon)
 and **Side panels** (the tool rail and properties panel). The choice and each layout's visibility
 settings are remembered. Switching keeps the current image, annotations, selection and undo history.
 
@@ -74,14 +74,19 @@ Stroke and highlight sliders stop at 40 px for finer control; use plus/minus for
 Font sizes retain their full slider range. Each slider drag is one undoable edit.
 **Esc** cancels a slider drag.
 
+Enable **Preferences → General → Keep annotation tool active** to place shapes, arrows,
+lines, checks/X marks and text repeatedly. It is off by default, so new annotations normally
+switch to Select for immediate moving/resizing. Pen and highlighter always stay active.
+The **…** app menu next to Undo/Redo includes **Exit Tiger Snip**; Classic UI keeps **File → Exit**.
+
 Selected text has side handles for independent box sizing. Drag left/right to rewrap text
 at the same font size, or top/bottom to adjust height while keeping every line visible.
 Corners scale the font. Resizing supports Undo/Redo and **Esc** cancellation.
 
 The **Settings** gear (or **F10**) opens the full settings panel in either UI. In Top toolbars,
-you can also use **Settings → Settings...**. **Appearance → New UI** switches to Side panels;
+you can also use **Settings → Preferences...**. **Appearance → New UI** switches to Side panels;
 **Classic UI** returns to Top toolbars. The panel includes appearance, capture,
-export, view and app actions. Settings save immediately. Choose **Purple**, **Blue**
+saving/export and view options. Preferences save immediately. Choose **Purple**, **Blue**
 or **Teal**, then **Light** or **Dark**; both choices work with either layout and affect only
 the editor. **Custom color** opens the color spectrum with RGB and hex input for your own UI
 accent. Apply saves it; Cancel keeps the previous theme. Capture buttons show the exact chosen

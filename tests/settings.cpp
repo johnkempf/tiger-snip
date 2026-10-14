@@ -57,6 +57,13 @@ int wmain()
                 "A fresh user must retain the ordinary renderer and tool defaults.");
         require(!app.classicUI && app.colorTheme == 0 && !app.darkTheme,
                 "A fresh installation must default to the new UI with the Purple light theme.");
+        require(!app.keepAnnotationToolActive, "New users must keep the Select-after-placement default.");
+        commitPreferences(app.iniPath, {{L"Settings", L"KeepAnnotationToolActive", L"1"}});
+        loadToolPreferences();
+        require(app.keepAnnotationToolActive, "Repeated annotation preference did not reload.");
+        commitPreferences(app.iniPath, {{L"Settings", L"KeepAnnotationToolActive", L"0"}});
+        loadToolPreferences();
+        require(!app.keepAnnotationToolActive, "Select-after-placement preference did not reload.");
         require(!app.exportOptions.jpg, "New users must default to PNG exports.");
         commitPreferences(app.iniPath, {{L"Settings", L"SaveFormat", L"1"},
                                        {L"Settings", L"ProfessionalBorder", L"1"},

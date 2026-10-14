@@ -22,6 +22,8 @@ bool settingsControlSelected(int id)
         return app.settingsStartup;
     case AutoCopy:
         return app.autoCopy;
+    case KeepAnnotationToolActive:
+        return app.keepAnnotationToolActive;
     case SaveFormatPng:
         return !app.exportOptions.jpg;
     case SaveFormatJpg:
@@ -73,7 +75,7 @@ void paintSettingsPanel(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
     rt->DrawRoundedRectangle(
         D2D1::RoundedRect({l.panel.left, l.panel.top, l.panel.right, l.panel.bottom}, 12, 12),
         brush, 1);
-    text(L"Settings", {l.panel.left + 24, l.panel.top + 15, l.panel.right - 56, l.panel.top + 41},
+    text(L"Preferences", {l.panel.left + 24, l.panel.top + 15, l.panel.right - 56, l.panel.top + 41},
          Ink);
     text(L"Make Tiger Snip fit your workflow.",
          {l.panel.left + 24, l.panel.top + 42, l.panel.right - 56, l.panel.top + 65}, Muted, true);
@@ -136,12 +138,12 @@ void paintSettingsPanel(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
             }
             if (control.kind == SettingsControlKind::Navigation)
                 text(control.title, {r.left + 12, r.top, r.right - 8, r.bottom},
-                     selected ? uiAccentText() : fg);
+                     selected ? uiAccentText() : fg, false, false, true);
             else if (control.kind == SettingsControlKind::Toggle || nested)
             {
                 text(control.title, {r.left + 12, r.top + 9, r.right - 64, r.top + 33}, fg);
                 text(control.detail, {r.left + 12, r.top + 34, r.right - 64, r.bottom - 4}, Muted,
-                     true);
+                     true, false, true);
                 const float cy = (r.top + r.bottom) / 2;
                 fill({r.right - 54, cy - 10, r.right - 16, cy + 10},
                      selected && available ? Accent : uiBorder(), 10);

@@ -81,28 +81,18 @@ int wmain()
         app.menuHidden = true;
         SetMenu(app.window, nullptr);
         ShowWindow(app.window, SW_SHOWNOACTIVATE);
-        // Both interfaces preserve the complete existing menu tree.
+        // Both layouts share one Preferences entry; commands remain in File/Edit/View.
         const HMENU menu = app.windowedMenu;
-        const std::array<int, 23> settings = {Settings, Preferences, AutoCopy,
-                                              RenderingSettings, SaveLocation,
-                                              Startup,           ProfessionalBorder,
-                                              ProfessionalBlur,  ProfessionalRounded,
-                                              SamtecLogo,        ToggleActions,
-                                              ToggleTools,       ToggleFormatting,
-                                              FullScreen,        About,
-                                              InterfaceClassic,  InterfaceOrange,
-                                              ThemePurple, ThemeBlue, ThemeTeal,
-                                              AppearanceLight, AppearanceDark, ThemeCustom};
-        for (int id : settings)
+        for (int id : {Preferences, ToggleActions, ToggleTools, ToggleFormatting, FullScreen,
+                       About, Exit, Copy, Save, SaveAs, CopySnipText})
             require(GetMenuState(menu, id, MF_BYCOMMAND) != static_cast<UINT>(-1),
-                    "An existing setting or view option is missing.");
-        require(GetMenuState(app.colorThemeMenu, ThemeOrange, MF_BYCOMMAND) == static_cast<UINT>(-1) &&
-                    GetMenuItemCount(app.colorThemeMenu) == 4,
-                "The native menu still offers the retired Orange preset.");
-        for (int style = 0; style < 6; ++style)
-            require(GetMenuState(app.logoMenu, LogoStyleFirst + style, MF_BYCOMMAND) !=
-                        static_cast<UINT>(-1),
-                    "A Samtec logo setting is missing.");
+                    "A command or Preferences entry is missing.");
+        require(GetMenuItemCount(GetSubMenu(menu, 3)) == 1 &&
+                    GetMenuItemID(GetSubMenu(menu, 3), 0) == Preferences,
+                "Classic Settings must contain only Preferences.");
+        for (int id : {SaveLocation, SaveFormatPng, SaveFormatJpg, Settings, AutoCopy, ThemePurple})
+            require(GetMenuState(menu, id, MF_BYCOMMAND) == static_cast<UINT>(-1),
+                    "An app preference is duplicated in the classic menu.");
         std::array<HMENU, 5> submenus{};
         for (int i = 0; i < 5; ++i)
             submenus[i] = GetSubMenu(menu, i);
@@ -202,6 +192,68 @@ int wmain()
         auto mouse = [&](Point p) {
             return MAKELPARAM(static_cast<int>(p.x * app.dpi), static_cast<int>(p.y * app.dpi));
         };
+        // Exercise actual mouse placement for each shape preset in both layouts.
+        const auto placementDocument = app.document;
+        const auto placementStyles = app.styles;
+        const bool placementDirty = app.dirty;
+        for (bool classic : {false, true})
+            for (bool keepActive : {false, true})
+            {
+                app.classicUI = classic;
+                app.keepAnnotationToolActive = keepActive;
+                updateView();
+                buildButtons();
+                for (Tool tool : {Tool::Circle, Tool::Rectangle, Tool::Arrow, Tool::Check,
+                                  Tool::Line, Tool::Pen, Tool::Highlight})
+                    for (int style = 0; style < StyleCounts[static_cast<size_t>(tool)]; ++style)
+                    {
+                        app.document = {};
+                        app.styles[static_cast<size_t>(tool)] = static_cast<uint8_t>(style);
+                        selectTool(tool);
+                        for (int placement = 0; placement < 2; ++placement)
+                        {
+                            Point start = app.view.toScreen({100.0f + placement * 200, 100});
+                            Point end = app.view.toScreen({180.0f + placement * 200, 170});
+                            mouseDown(mouse(start));
+                            mouseMove(mouse(end));
+                            mouseUp(mouse(end));
+                            const bool repeats = keepActive || tool == Tool::Pen || tool == Tool::Highlight;
+                            require(app.tool == (repeats ? tool : Tool::Select),
+                                    "Annotation completion chose the wrong tool.");
+                            require(app.document.items.size() == static_cast<size_t>(repeats ? placement + 1 : 1),
+                                    "Consecutive placement did not honor the annotation preference.");
+                            if (repeats)
+                                require(!selected(), "Repeated placement must deselect the completed annotation.");
+                        }
+                        require(app.document.undo(), "Placed annotations must remain undoable.");
+                    }
+                app.document = {};
+                selectTool(Tool::Text);
+                for (int placement = 0; placement < 2; ++placement)
+                {
+                    if (!keepActive)
+                        selectTool(Tool::Text);
+                    mouseDown(mouse(app.view.toScreen({100.0f + placement * 200, 250})));
+                    require(app.textEdit != nullptr, "Cannot start consecutive text annotations.");
+                    SetWindowTextW(app.textEdit, L"Repeated text");
+                    finishTextEditing();
+                    require(app.tool == (keepActive ? Tool::Text : Tool::Select) &&
+                                app.document.items.size() == static_cast<size_t>(placement + 1),
+                            "Finishing text did not honor the annotation preference.");
+                    if (keepActive)
+                        require(!selected(), "Repeated text must deselect the completed annotation.");
+                }
+                require(app.document.undo() && app.document.items.size() == 1,
+                        "Consecutive text annotations must undo independently.");
+            }
+        app.classicUI = false;
+        app.keepAnnotationToolActive = false;
+        app.document = placementDocument;
+        app.styles = placementStyles;
+        app.dirty = placementDirty;
+        app.tool = Tool::Select;
+        updateView();
+        buildButtons();
         auto verifyClassicChrome = [&] {
             if (!app.classicUI)
                 return;
@@ -465,13 +517,13 @@ int wmain()
         require(app.classicUI && GetMenu(app.window) == app.windowedMenu &&
                     canvasRect().left == 0 && canvasRect().right == clientDips().right &&
                     app.collapsedRows == 0 &&
-                    (GetMenuState(app.interfaceMenu, InterfaceClassic, MF_BYCOMMAND) & MF_CHECKED),
+                    settingsControlSelected(InterfaceClassic),
                 "Top toolbars did not activate with their native menu.");
         require(preferenceUInt(app.iniPath, L"Settings", L"ToolbarLayout", 9) == 0,
                 "The toolbar layout did not save immediately.");
         command(ToggleTools);
         command(InterfaceOrange);
-        // Every previous setting/action is available through the new panel.
+        // App preferences have one home in the panel; editor commands stay in menus/toolbars.
         command(AppMenu);
         std::vector<int> panelCommands;
         for (int page = SettingsPageFirst; page <= SettingsPageLast; ++page)
@@ -484,17 +536,23 @@ int wmain()
                 "The Settings panel still offers the retired Orange preset.");
         for (int id : {InterfaceClassic, InterfaceOrange, ThemePurple, ThemeBlue,
                        ThemeTeal, ThemeCustom, AppearanceLight, AppearanceDark, SettingsRenderer, Startup,
-                       SaveLocation, SaveFormatPng, SaveFormatJpg, SettingsAreaKey, SettingsAllKey, AutoCopy, ProfessionalBorder,
+                       SaveLocation, SaveFormatPng, SaveFormatJpg, SettingsAreaKey, SettingsAllKey, AutoCopy, KeepAnnotationToolActive, ProfessionalBorder,
                        ProfessionalBlur, ProfessionalRounded, SamtecLogo, ToggleActions,
-                       ToggleTools, ToggleFormatting, FullScreen, Fit, Actual, NewSnip, InstantSnip,
-                       RecentSnips, Copy, Save, SaveAs, Undo, Redo, DeleteSelected, Clear,
-                       CropImageChoice, SelectPixelsChoice, Paste, EraserTool, Exit})
+                       ToggleTools, ToggleFormatting, FullScreen, Fit, Actual})
             require(std::find(panelCommands.begin(), panelCommands.end(), id) != panelCommands.end(),
                     "The modern Settings panel lost an existing option or action.");
         for (int style = 0; style < 6; ++style)
             require(std::find(panelCommands.begin(), panelCommands.end(), LogoStyleFirst + style) !=
                         panelCommands.end(),
                     "The modern Settings panel lost a logo style.");
+        require(std::find(panelCommands.begin(), panelCommands.end(), Copy) == panelCommands.end(),
+                "Preferences still includes the redundant Actions page.");
+        command(SettingsPageFirst + 3);
+        const auto savingControls = settingsPanelLayout().controls;
+        for (int id : {SaveLocation, SaveFormatPng, SaveFormatJpg})
+            require(std::any_of(savingControls.begin(), savingControls.end(),
+                                [&](const SettingsControl &c) { return c.command == id; }),
+                    "Saving preferences must keep location and file type together.");
         command(SettingsPageFirst);
         auto settingsClick = [&](int id) {
             const auto layout = settingsPanelLayout();
@@ -518,6 +576,16 @@ int wmain()
             mouseDown(mouse(point));
             mouseUp(mouse(point));
         };
+        command(SettingsPageFirst + 1);
+        settingsClick(KeepAnnotationToolActive);
+        require(app.keepAnnotationToolActive && settingsControlSelected(KeepAnnotationToolActive) &&
+                    preferenceUInt(app.iniPath, L"Settings", L"KeepAnnotationToolActive", 0) == 1,
+                "The annotation toggle did not apply and save immediately.");
+        settingsClick(KeepAnnotationToolActive);
+        require(!app.keepAnnotationToolActive &&
+                    preferenceUInt(app.iniPath, L"Settings", L"KeepAnnotationToolActive", 1) == 0,
+                "The annotation toggle did not restore and save Select-after-placement.");
+        command(SettingsPageFirst);
         settingsClick(ThemeBlue);
         require(app.colorTheme == 2 && app.settingsPanelOpen && !app.pressed &&
                     GetCapture() != app.window,
@@ -584,8 +652,8 @@ int wmain()
             require(!settingsControlSelected(ProfessionalBlur) &&
                         !settingsControlSelected(ProfessionalRounded) &&
                         !enabled(ProfessionalBlur) && !enabled(ProfessionalRounded) &&
-                        !(GetMenuState(menu, ProfessionalBlur, MF_BYCOMMAND) & MF_CHECKED) &&
-                        !(GetMenuState(menu, ProfessionalRounded, MF_BYCOMMAND) & MF_CHECKED),
+                        !settingsControlSelected(ProfessionalBlur) &&
+                        !settingsControlSelected(ProfessionalRounded),
                     "Professional components appear on while their parent is off.");
             settingsClick(ProfessionalBlur);
             settingsClick(ProfessionalRounded);
@@ -611,7 +679,7 @@ int wmain()
                         !enabled(ProfessionalBorder) && !enabled(ProfessionalBlur) &&
                         !enabled(ProfessionalRounded) && !settingsControlSelected(ProfessionalBorder) &&
                         !settingsControlSelected(ProfessionalBlur) && !settingsControlSelected(ProfessionalRounded) &&
-                        (GetMenuState(menu, ProfessionalBorder, MF_BYCOMMAND) & MF_GRAYED) &&
+                        !enabled(ProfessionalBorder) &&
                         renderedExport().width == app.image.width && previewImage().width == app.image.width &&
                         previewPadding() == 0,
                     "JPG did not disable Professional Border in Settings, menus, preview and export.");
@@ -725,7 +793,7 @@ int wmain()
         require(customThemePickerTest.error.empty() && !app.themePickerOpen &&
                     app.customUIAccent == pickedColor && app.colorTheme == 4 &&
                     settingsControlSelected(ThemeCustom) &&
-                    (GetMenuState(app.colorThemeMenu, ThemeCustom, MF_BYCOMMAND) & MF_CHECKED) &&
+                    settingsControlSelected(ThemeCustom) &&
                     preferenceUInt(app.iniPath, L"Settings", L"CustomUIAccent", 0) == pickedColor &&
                     preferenceUInt(app.iniPath, L"Settings", L"ColorTheme", 0) == 4,
                 "Applying the custom UI picker did not select and immediately save its color.");
@@ -834,7 +902,7 @@ int wmain()
         require(!app.settingsPanelOpen && app.drag == Drag::None,
                 "Outside click did not dismiss Settings and consume the pointer event.");
         require(!app.classicUI && !GetMenu(app.window) && app.collapsedRows == 4 &&
-                    (GetMenuState(app.interfaceMenu, InterfaceOrange, MF_BYCOMMAND) & MF_CHECKED),
+                    settingsControlSelected(InterfaceOrange),
                 "Side panels did not restore their own visibility settings.");
         command(ToggleFormatting);
         command(InterfaceClassic);
