@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "builtAtUtc": "2026-10-14T13:26:51Z",
-  "sourceBaseCommit": "0d0c8b85b8acabd77b1c7d40983403daff9f7428",
+  "builtAtUtc": "2026-10-15T16:41:23Z",
+  "sourceBaseCommit": "36e9e0b1cf727b647443f7db7b32420333891e9f",
   "workingTreeHasUncommittedChanges": true,
   "compilerVersion": [
     "clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)",
@@ -79,7 +79,7 @@
   "powershellVersion": "7.6.5",
   "output": {
     "name": "Tiger Snip.exe",
-    "sha256": "52D53DC35563C0C1DA6BFAEA7856013F499FE3E342070DAB5805BE73D8A4B969"
+    "sha256": "51B53CCD1FC2F734ADD0F8F580538232E83058931370CE94042E58CA8E2B4E08"
   },
   "inputs": [
     {
@@ -232,7 +232,7 @@
     },
     {
       "path": "src\\main.cpp",
-      "sha256": "60A01FD6039C4A03E95FD1AD86E1109D48BA6A257447D352563CD683992188C0"
+      "sha256": "43C6B3AF2520D47CBD3F0217737A7A10D54B41CC79450AA045C7E00CA0E475C6"
     },
     {
       "path": "src\\model.cpp",
@@ -416,7 +416,7 @@
     },
     {
       "path": "tests\\text_capture.cpp",
-      "sha256": "5464965A8CF0F4E9715C04A04CA2433DEF9F1EC05AA33F4AA8DF09CE21724ADA"
+      "sha256": "603F5D4402B5551143183BA408D76F3603279876B4B351AF47BE2BBB9E9975F8"
     },
     {
       "path": "tests\\text_edit.cpp",

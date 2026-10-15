@@ -1,5 +1,5 @@
 Tiger Snip 1.0.2 release information
-Packaged: 2026-10-14 13:27:38 UTC
+Packaged: 2026-10-15 16:41:24 UTC
 Distribution file: Tiger Snip Setup.msi
 Installation: current user; local app and Start menu shortcut; no automatic startup.
 Interactive setup: success confirmation; Launch Tiger Snip checked by default on Finish.
@@ -7,18 +7,18 @@ Silent/basic-UI setup, repair, and removal do not launch the app.
 Settings: current user LocalAppData; personal preferences are excluded from this package.
 Build: C++20, static runtime; package authored with Windows Installer and makecab.
 Compiler: clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)
-Executable built: 10/14/2026 13:26:51
+Executable built: 10/15/2026 16:41:23
 Build record: Tiger Snip Build.json (compiler/tool hashes, options, source-input and EXE hashes).
 Validated toolchain provenance: BUILD-TOOLCHAIN.md in the source repository.
 Signing: unsigned. IT deployment policy remains to be validated.
-Source base commit at build time: 0d0c8b85b8acabd77b1c7d40983403daff9f7428
+Source base commit at build time: 36e9e0b1cf727b647443f7db7b32420333891e9f
 Working tree had uncommitted changes at build time: True
 A source archive without Git metadata records those fields as unknown; input hashes still identify the actual files.
 
 SHA256:
-A5A96B8E4EF548DC526CAF00B9B89B13BBFE03BAA27F268B7D6868DF24838A45  Tiger Snip Setup.msi
-0FAC2DB3AABE0536449A2556B99AAF39F067C8CE99C2097994DE52EF434C4DC6  Tiger Snip Build.json
-52D53DC35563C0C1DA6BFAEA7856013F499FE3E342070DAB5805BE73D8A4B969  Tiger Snip.exe
+4761AA2726CCE7B588E1A96386A3191841B3FD60DB076867979C98712C95A707  Tiger Snip Setup.msi
+9F9EDD5D1FEB7D0A02E8836CC359A8A6DBCB75D54FF8F2537E9F063FFA19290E  Tiger Snip Build.json
+51B53CCD1FC2F734ADD0F8F580538232E83058931370CE94042E58CA8E2B4E08  Tiger Snip.exe
 8D85C1057D742E597985C7D4E6320B015A9139385CFF4CBAE06FFC0EBE89AFEE  LLVM.txt
 1DB8DA07B436C68833C0673FFEE3D9FCB2526047F3820B81661865DFEDC79A1F  MinGW-runtime.txt
 
@@ -46,7 +46,7 @@ D061FB7C2488ABB6C756C34823336BC91063A37A8D78E4802DDA2013682A2C41  src\file_io.cp
 5589A7ABA5C067547A022229C4ACA61C567A591296325A3B922914A0C35C05F7  src\file_io.h
 54E79A3A86CA79F2CBC7A3150BD6A88A4B860625ED6692503762E5DD8DAE30CD  src\graphics.cpp
 8B76EBCC00AAF40F49D38A10AD80E5CD814B0E9B4B6B422C187800E456482A78  src\graphics.h
-60A01FD6039C4A03E95FD1AD86E1109D48BA6A257447D352563CD683992188C0  src\main.cpp
+43C6B3AF2520D47CBD3F0217737A7A10D54B41CC79450AA045C7E00CA0E475C6  src\main.cpp
 B932E835125CF9034B88305E29888BE0AE1F15309E97426261B66D9FEC784440  src\model.cpp
 6A97B34403D17037CD628E2D7ED8B87D8E733EA43F85DD5116C26DEE8DE1DDDA  src\model.h
 69ED2C5BB37BEA18D0C23BF019E385341E7995F84AF417F219BE8BF2B40F720E  src\ocr_layout.cpp

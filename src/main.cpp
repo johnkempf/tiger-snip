@@ -294,7 +294,7 @@ struct Application
     bool fit = true, dirty = false, capturePending = false, exiting = false, tray = false,
          spaceDown = false;
     bool selecting = false, changed = false, smoke = false;
-    bool textCapture = false, textEditorWasVisible = false;
+    bool textCapture = false;
     HWND textReturnWindow = nullptr;
     POINT textNoticePoint{};
     DWORD textClipboardSequence = 0;
@@ -5671,14 +5671,11 @@ void cancelCapture(bool restore = true)
     app.capturePending = false;
     if (wasText)
     {
-        if (app.textEditorWasVisible)
-        {
-            const BOOL uncloaked = FALSE;
-            DwmSetWindowAttribute(app.window, DWMWA_CLOAK, &uncloaked, sizeof(uncloaked));
-            ShowWindow(app.window, SW_SHOWNOACTIVATE);
-        }
-        if (IsWindow(app.textReturnWindow))
-            SetForegroundWindow(app.textReturnWindow);
+        // Text snips only update the clipboard. Leave the editor hidden, even if
+        // it was visible or minimized before capture, and never reactivate it.
+        const HWND returnWindow = std::exchange(app.textReturnWindow, nullptr);
+        if (returnWindow != app.window && IsWindow(returnWindow))
+            SetForegroundWindow(returnWindow);
     }
     else if (restore)
         showEditor();
@@ -5841,7 +5838,6 @@ void startSnip(bool instant, bool allMonitors, bool textCapture)
     if (textCapture)
     {
         app.textReturnWindow = GetForegroundWindow();
-        app.textEditorWasVisible = IsWindowVisible(app.window) != FALSE;
     }
     closeSettingsPanel();
     closeRecent();

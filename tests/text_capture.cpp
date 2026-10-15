@@ -190,7 +190,6 @@ int wmain()
         };
         ShowWindow(app.window, SW_HIDE);
         app.textCapture = true;
-        app.textEditorWasVisible = false;
         app.desktop = image;
         app.selectionStart = {0, 0};
         app.selectionEnd = {image.width, image.height};
@@ -236,6 +235,44 @@ int wmain()
                 "Text preview can steal focus.");
         require(app.image.pixels == previousPixels && app.recent.size() == recentCount && app.dirty,
                 "Text capture replaced the open snip or editing state.");
+        // IsWindowVisible also returns true for a minimized editor. Exercise the
+        // selection lifecycle in every initial state so neither capture completion
+        // nor cancellation can bring the editor back above the user's work.
+        // Seed the frozen desktop: DwmFlush cannot run on a private test desktop.
+        auto startTextSelection = [&] {
+            startSnip(false, false, true);
+            app.desktop = image;
+            openOverlay();
+        };
+        for (int initialShow : {SW_SHOWNOACTIVATE, SW_SHOWMINNOACTIVE, SW_HIDE})
+        {
+            ShowWindow(app.window, initialShow);
+            startTextSelection();
+            require(app.overlay && app.textCapture && !IsWindowVisible(app.window),
+                    "Text shortcut did not open the selection with the editor hidden.");
+            app.desktop = image;
+            app.selectionStart = {0, 0};
+            app.selectionEnd = {image.width, image.height};
+            finishCapture();
+            require(!IsWindowVisible(app.window),
+                    "Finishing a text selection restored the editor.");
+            waitRecognition();
+            require(!IsWindowVisible(app.window) && clipboardText() == expected &&
+                        noticeTitle() == L"Text copied" && !app.textReturnWindow,
+                    "Text shortcut failed to copy quietly and clear its return window.");
+            require(app.image.pixels == previousPixels && app.recent.size() == recentCount &&
+                        app.dirty,
+                    "Text shortcut changed the current image or editing state.");
+
+            ShowWindow(app.window, initialShow);
+            startTextSelection();
+            require(app.overlay && app.textCapture, "Cannot start canceled text selection.");
+            const DWORD beforeCancel = GetClipboardSequenceNumber();
+            SendMessageW(app.overlay, WM_KEYDOWN, VK_ESCAPE, 0);
+            require(!app.overlay && !app.textCapture && !IsWindowVisible(app.window) &&
+                        GetClipboardSequenceNumber() == beforeCancel,
+                    "Canceling a text selection restored the editor or changed the clipboard.");
+        }
         // These real 16-28px screen crops all returned no text at native size.
         // Exercise the selection -> OCR -> Unicode clipboard path, not just a
         // preprocessing helper. Exact expectations catch lost punctuation and
@@ -280,7 +317,6 @@ int wmain()
             // Internal margins must not accidentally include that outside area.
             app.desktop = std::move(surrounding);
             app.textCapture = true;
-            app.textEditorWasVisible = false;
             app.selectionStart = {20, 20};
             app.selectionEnd = {20 + fixture.width, 20 + fixture.height};
             finishCapture();
@@ -498,7 +534,6 @@ int wmain()
                     clipboardText() == expected,
                 "Busy text clipboard lost the old contents or showed success.");
         app.textCapture = true;
-        app.textEditorWasVisible = false;
         cancelCapture();
         require(!IsWindowVisible(app.window) && !app.textCapture &&
                     GetClipboardSequenceNumber() == resetSequence,

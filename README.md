@@ -56,7 +56,8 @@ omitted. Leave a small margin around the complete line you want to copy.
 A small **Text copied** popup previews the exact text for three seconds. Hover to keep it
 visible; click to dismiss. Long previews are shortened, while the clipboard contains all
 recognized lines. **Esc** cancels; a selection with no text leaves your clipboard unchanged.
-The editor and current snip are preserved. Change or disable this shortcut under
+The editor stays hidden after a text capture, including when it was open or minimized
+beforehand. The current snip is preserved. Change or disable this shortcut under
 **Preferences → Capture**. The capture menu
 also offers **Copy text from an area**; **App menu → Copy text from snip** (Classic UI: **File**) extracts
 text from the current screenshot. OCR can confuse small or blurry characters, so check
