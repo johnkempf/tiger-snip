@@ -38,6 +38,9 @@ not support transparency. Switching back to PNG restores your previous border ch
 **Save as type** also offers both formats. Choosing JPG there omits the border, blur,
 and rounded corners for that file; choosing PNG uses your remembered border choices.
 The dropdown does not change the default format in Preferences or the editor preview.
+The bottom status bar shows your total **Screenshots**. It starts at zero and saves
+after each completed screenshot, so it continues across app restarts. Text captures,
+canceled selections, and reopening or copying existing images do not add to the total.
 The capture icon on the welcome screen also starts a snip. **Recent** keeps the last ten captures;
 Right-click the open snip or a Recent thumbnail for **Copy**, **Save**, and **Save As**.
 Recent actions include annotations and export effects without reopening the capture.

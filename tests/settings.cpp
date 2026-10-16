@@ -39,9 +39,16 @@ int wmain()
                 "Migration must preserve this PC's renderer and personal tool preferences.");
         require(app.colorTheme == 0 && app.appearancePreferencesDirty,
                 "The retired Orange preset must migrate to Purple.");
+        require(app.totalScreenshots == 0, "Existing profiles without a total must start at zero.");
+        app.totalScreenshots = 42;
+        app.screenshotTotalDirty = true;
         app.thickness = 17;
         app.toolPreferencesDirty = true;
         require(saveToolPreferences(), "Migrated personal preferences must be writable.");
+        app.totalScreenshots = 0;
+        loadToolPreferences();
+        require(app.totalScreenshots == 42 && !app.screenshotTotalDirty,
+                "The screenshot total did not survive a preferences reload.");
         require(GetPrivateProfileIntW(L"Settings", L"ColorTheme", 99, first.c_str()) == 0 &&
                     GetPrivateProfileIntW(L"Settings", L"ColorTheme", 99, portable.c_str()) == 1,
                 "Orange migration must persist without changing the read-only source.");
@@ -57,6 +64,13 @@ int wmain()
                 "A fresh user must retain the ordinary renderer and tool defaults.");
         require(!app.classicUI && app.colorTheme == 0 && !app.darkTheme,
                 "A fresh installation must default to the new UI with the Purple light theme.");
+        require(app.totalScreenshots == 0, "A new profile inherited another user's screenshot total.");
+        commitPreferences(app.iniPath, {{L"Statistics", L"TotalScreenshots", L"4294967295"}});
+        loadToolPreferences();
+        require(app.totalScreenshots == UINT32_MAX, "A large screenshot total was truncated.");
+        commitPreferences(app.iniPath, {{L"Statistics", L"TotalScreenshots", L"invalid"}});
+        loadToolPreferences();
+        require(app.totalScreenshots == 0, "A malformed screenshot total did not default to zero.");
         require(!app.keepAnnotationToolActive, "New users must keep the Select-after-placement default.");
         commitPreferences(app.iniPath, {{L"Settings", L"KeepAnnotationToolActive", L"1"}});
         loadToolPreferences();

@@ -174,6 +174,7 @@ int wmain()
         app.dirty = true;
         const auto previousPixels = app.image.pixels;
         const auto recentCount = app.recent.size();
+        const auto screenshotTotal = app.totalScreenshots;
         auto waitRecognition = [&] {
             const auto deadline = GetTickCount64() + 20000;
             while (app.textResult.valid() && GetTickCount64() < deadline)
@@ -535,6 +536,9 @@ int wmain()
                 "Busy text clipboard lost the old contents or showed success.");
         app.textCapture = true;
         cancelCapture();
+        require(app.totalScreenshots == screenshotTotal &&
+                    preferenceUInt(app.iniPath, L"Statistics", L"TotalScreenshots", 0) == screenshotTotal,
+                "Text capture or cancellation increased the screenshot total.");
         require(!IsWindowVisible(app.window) && !app.textCapture &&
                     GetClipboardSequenceNumber() == resetSequence,
                 "Canceling text capture opened the editor or changed the clipboard.");

@@ -321,7 +321,7 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
         rt->FillEllipse(D2D1::Ellipse({22, client.bottom - StatusHeight / 2}, 3, 3), brush);
     text(message,
          {app.fullScreen ? 402.0f : 34.0f, client.bottom - StatusHeight,
-          client.right - (hasImage() ? 292 : 14), client.bottom},
+          screenshotCounterRect().left - 12, client.bottom},
          Muted, app.graphics.smallFont.get());
     if (hasImage())
         text(std::to_wstring(static_cast<int>(std::round(app.view.scale * app.dpi * 100))) +

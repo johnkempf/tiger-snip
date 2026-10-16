@@ -276,6 +276,8 @@ struct Application
     int activeRecent = -1, recentScroll = 0, recentFocus = 0;
     bool recentOpen = false;
     unsigned recentSequence = 0;
+    uint32_t totalScreenshots = 0;
+    bool screenshotTotalDirty = false;
     Tool tool = Tool::Select;
     bool erasing = false;
     std::array<Color, 9> colors = {Palette[0], Palette[0], Palette[0], Palette[0], Palette[3],
@@ -663,6 +665,8 @@ void loadToolPreferences()
     app.palette = loadPalette(app.iniPath, {Palette.begin(), Palette.end()});
     app.paletteDirty = false;
     app.autoCopy = preferenceUInt(app.iniPath, L"Settings", L"AutoCopy", 1) != 0;
+    app.totalScreenshots = preferenceUInt(app.iniPath, L"Statistics", L"TotalScreenshots", 0);
+    app.screenshotTotalDirty = false;
     app.keepAnnotationToolActive =
         preferenceUInt(app.iniPath, L"Settings", L"KeepAnnotationToolActive", 0) == 1;
     if (!app.rendererSpecified)
@@ -782,6 +786,8 @@ bool saveToolPreferences()
             setting(L"Settings", L"InstantHotkey", app.instantHotkey);
             setting(L"Settings", L"TextHotkey", app.textHotkey);
         }
+        if (app.screenshotTotalDirty)
+            setting(L"Statistics", L"TotalScreenshots", app.totalScreenshots);
         if (app.toolPreferencesDirty)
         {
             for (size_t i = 0; i < app.colors.size(); ++i)
@@ -804,6 +810,7 @@ bool saveToolPreferences()
         app.paletteDirty = app.layoutPreferencesDirty = app.exportPreferencesDirty = false;
         app.toolPreferencesDirty = app.shortcutsDirty = app.rendererPreferencesDirty = false;
         app.appearancePreferencesDirty = false;
+        app.screenshotTotalDirty = false;
         app.preferenceError.clear();
         return true;
     }
@@ -2643,6 +2650,12 @@ void drawUIIcon(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush, int id, Poin
         break;
     }
 }
+Rect screenshotCounterRect()
+{
+    const auto client = clientDips();
+    const float right = client.right - (app.classicUI && !hasImage() ? 14 : 214);
+    return {right - 180, client.bottom - StatusHeight, right, client.bottom};
+}
 #include "editor_chrome.h"
 #include "editor_classic_chrome.h"
 #include "editor_settings_chrome.h"
@@ -2721,6 +2734,8 @@ void paintEditor(ID2D1RenderTarget *alternate = nullptr)
         paintClassicEditorChrome(rt, brush.get());
     else
         paintEditorChrome(rt, brush.get());
+    text(L"Screenshots: " + std::to_wstring(app.totalScreenshots), screenshotCounterRect(), Muted,
+         app.graphics.smallFont.get());
     if (hasImage())
     {
         const auto &preview = previewImage();
@@ -5813,6 +5828,15 @@ void acceptCapture(Bitmap captured)
     app.erasing = false;
     app.fit = true;
     app.status.clear();
+    if (!app.image.empty() && !app.smoke && !app.resizeTest && app.totalScreenshots < UINT32_MAX)
+    {
+        ++app.totalScreenshots;
+        app.screenshotTotalDirty = true;
+        // Save every completed capture so quitting or a crash does not lose the total.
+        // Keep a failed write dirty for the next preferences save without losing the snip.
+        if (!saveToolPreferences())
+            app.status = L"Screenshot captured. Could not save the screenshot total.";
+    }
     updateTitle();
     showEditor();
     // Diagnostic capture suites must leave the user's clipboard untouched.

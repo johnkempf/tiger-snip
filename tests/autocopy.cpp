@@ -31,10 +31,16 @@ void CALLBACK driveSaveDialog(HWND window, UINT, UINT_PTR id, DWORD)
                 throw std::runtime_error("The modern Save As dialog did not open.");
             return;
         }
+        Com<IShellItem> startingFolder;
+        // The native dialog's HWND can exist before its first navigation completes.
+        if (FAILED(activeSaveDialog->GetFolder(startingFolder.put())) || !startingFolder)
+        {
+            if (++saveDialogAttempts >= 50)
+                throw std::runtime_error("Cannot read the initial save folder.");
+            return;
+        }
         KillTimer(window, id);
         saveDialogSeen = true;
-        Com<IShellItem> startingFolder;
-        check(activeSaveDialog->GetFolder(startingFolder.put()), "Cannot read the initial save folder.");
         PWSTR folderName = nullptr;
         check(startingFolder->GetDisplayName(SIGDN_FILESYSPATH, &folderName), "Cannot read the initial folder path.");
         initialSaveFolder = folderName;
@@ -221,6 +227,12 @@ int wmain()
         };
         acceptCapture(image);
         clipboardMatches(renderedExport());
+        require(app.totalScreenshots == 1 && !app.screenshotTotalDirty &&
+                    preferenceUInt(app.iniPath, L"Statistics", L"TotalScreenshots", 0) == 1,
+                "A completed screenshot did not immediately persist its total.");
+        app.totalScreenshots = 0;
+        loadToolPreferences();
+        require(app.totalScreenshots == 1, "Restarting preferences lost the screenshot total.");
         require(!app.copyFlashStarted, "Auto copy should leave the manual Copy flash available.");
         BYTE keyboard[256]{};
         GetKeyboardState(keyboard);
@@ -286,7 +298,11 @@ int wmain()
         loadToolPreferences();
         require(!app.autoCopy, "Disabled auto copy must persist on reload.");
         const auto beforeCapture = GetClipboardSequenceNumber();
+        require(app.totalScreenshots == 1, "Copying and editing inflated the screenshot total.");
         acceptCapture(image.crop(0, 0, 30, 20));
+        require(app.totalScreenshots == 2 &&
+                    preferenceUInt(app.iniPath, L"Statistics", L"TotalScreenshots", 0) == 2,
+                "A screenshot with auto copy disabled was not counted.");
         require(GetClipboardSequenceNumber() == beforeCapture,
                 "Disabled auto copy changed clipboard.");
         clipboardMatches(copiedEdits);
@@ -300,6 +316,7 @@ int wmain()
         app.selectionEnd = {33, 24};
         finishCapture();
         clipboardMatches(image.crop(3, 4, 30, 20));
+        require(app.totalScreenshots == 3, "A selection capture was not counted exactly once.");
         const auto beforeCancel = GetClipboardSequenceNumber();
         app.capturePending = true;
         cancelCapture();
@@ -311,6 +328,9 @@ int wmain()
         require(GetClipboardSequenceNumber() == beforeCancel,
                 "Diagnostic captures changed clipboard.");
         app.smoke = false;
+        require(app.totalScreenshots == 3 &&
+                    preferenceUInt(app.iniPath, L"Statistics", L"TotalScreenshots", 0) == 3,
+                "Cancel, Recent, or diagnostic captures inflated the screenshot total.");
         // Copy an inactive recent capture, including its annotations and current export effects,
         // while retaining the live capture, selection, undo history and viewport.
         for (int layout : {InterfaceClassic, InterfaceOrange})

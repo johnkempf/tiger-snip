@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "builtAtUtc": "2026-10-15T16:41:23Z",
-  "sourceBaseCommit": "36e9e0b1cf727b647443f7db7b32420333891e9f",
+  "builtAtUtc": "2026-10-16T20:28:32Z",
+  "sourceBaseCommit": "1c7a2a20197b5439ca2c6912d62afc340f873bc8",
   "workingTreeHasUncommittedChanges": true,
   "compilerVersion": [
     "clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)",
@@ -79,7 +79,7 @@
   "powershellVersion": "7.6.5",
   "output": {
     "name": "Tiger Snip.exe",
-    "sha256": "51B53CCD1FC2F734ADD0F8F580538232E83058931370CE94042E58CA8E2B4E08"
+    "sha256": "F7DFF316EBE903AAC45A459F740B99A665EE3BFBB5DD5E60977425FE3A28EC93"
   },
   "inputs": [
     {
@@ -188,11 +188,11 @@
     },
     {
       "path": "src\\editor_chrome.h",
-      "sha256": "DCDF8F61D2C117F4E8C2A5F44DEFF6CDE1B3D35FFCFACAF8B7F9357FCA4E5AB1"
+      "sha256": "32E64F9D099E66536974BDB8897B7F22DAFFD6F38CA3F02E20BE478542089933"
     },
     {
       "path": "src\\editor_classic_chrome.h",
-      "sha256": "B58C190E73EC5E17F8300C0051ABC127298765E0959128FB0D7B6D0BD6AFD175"
+      "sha256": "E9EE10BAD1A2797C2ED156CC1267BCCC4D6233F933096549C6EF8F0783B923C9"
     },
     {
       "path": "src\\editor_classic_layout.h",
@@ -232,7 +232,7 @@
     },
     {
       "path": "src\\main.cpp",
-      "sha256": "43C6B3AF2520D47CBD3F0217737A7A10D54B41CC79450AA045C7E00CA0E475C6"
+      "sha256": "36BB5BD77E1A9C35BEA53DCC24600D34C69AB72D861B6024D0D9BB21DE695EB1"
     },
     {
       "path": "src\\model.cpp",
@@ -296,7 +296,7 @@
     },
     {
       "path": "tests\\autocopy.cpp",
-      "sha256": "20FE63C64148178D58FAAE86B1AEA94DD50EFFE9A673EEF2346DC7E072369EC8"
+      "sha256": "54B4E63F1B6604F0CBCABEAE567D51247925FDDFE50FB9E726A11113B315B217"
     },
     {
       "path": "tests\\clipboard.cpp",
@@ -408,7 +408,7 @@
     },
     {
       "path": "tests\\settings.cpp",
-      "sha256": "E54B7E64F790A9B3B0A44183FF91102BDD07F588507912FE271432EEAEB3CED2"
+      "sha256": "56E519A570F65C6CE565B80D7425CA6C1966A63ED2E35D353C90D6DD5AFE7912"
     },
     {
       "path": "tests\\single_instance.cpp",
@@ -416,7 +416,7 @@
     },
     {
       "path": "tests\\text_capture.cpp",
-      "sha256": "603F5D4402B5551143183BA408D76F3603279876B4B351AF47BE2BBB9E9975F8"
+      "sha256": "17743EA8A4A6C820A88DE092045553DF2E03521A12F1223EE5653AB9671BD168"
     },
     {
       "path": "tests\\text_edit.cpp",

@@ -491,10 +491,13 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                                                        std::to_wstring(app.image.height) + L" px"
                                                  : L"Ready when you are"
                                            : app.status;
-    text(info, {app.fullScreen ? 266.0f : 90.0f, y, client.right - 210, client.bottom}, Muted,
+    const float countLeft = screenshotCounterRect().left;
+    const bool showShortcut = app.status.empty() && client.width() > 1060 && !app.fullScreen;
+    text(info, {app.fullScreen ? 266.0f : 90.0f, y,
+                showShortcut ? client.right / 2 - 60 : countLeft - 12, client.bottom}, Muted,
          app.graphics.smallFont.get());
-    if (app.status.empty() && client.width() > 1060 && !app.fullScreen)
+    if (showShortcut)
         text(hotkeyName(app.hotkey) + L"  New snip",
-             {client.right / 2 - 40, y, client.right - 210, client.bottom}, Muted,
+             {client.right / 2 - 40, y, countLeft - 12, client.bottom}, Muted,
              app.graphics.smallFont.get());
 }
