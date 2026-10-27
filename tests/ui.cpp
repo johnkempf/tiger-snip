@@ -170,6 +170,14 @@ int wmain()
         arrow.b = {329, 398};
         app.document.items = {arrow};
         app.document.selected = 0;
+        HMENU snipMenu = snipActionsMenu(true);
+        require(snipMenu && GetMenuItemCount(snipMenu) == 6 &&
+                    GetMenuItemID(snipMenu, 4) == CopySnipText &&
+                    GetMenuItemID(snipMenu, 5) == Clear &&
+                    !(GetMenuState(snipMenu, CopySnipText, MF_BYCOMMAND) & MF_GRAYED) &&
+                    !(GetMenuState(snipMenu, Clear, MF_BYCOMMAND) & MF_GRAYED),
+                "The image context menu lost its text extraction or clear annotations action.");
+        DestroyMenu(snipMenu);
         updateView();
         buildButtons();
         const auto originalPixels = app.image.pixels;
@@ -538,7 +546,7 @@ int wmain()
                        ThemeTeal, ThemeCustom, AppearanceLight, AppearanceDark, SettingsRenderer, Startup,
                        SaveLocation, SaveFormatPng, SaveFormatJpg, SettingsAreaKey, SettingsAllKey, AutoCopy, KeepAnnotationToolActive, ProfessionalBorder,
                        ProfessionalBlur, ProfessionalRounded, SamtecLogo, ToggleActions,
-                       ToggleTools, ToggleFormatting, FullScreen, Fit, Actual})
+                       ToggleTools, ToggleFormatting, FullScreen, Fit, Actual, Exit})
             require(std::find(panelCommands.begin(), panelCommands.end(), id) != panelCommands.end(),
                     "The modern Settings panel lost an existing option or action.");
         for (int style = 0; style < 6; ++style)

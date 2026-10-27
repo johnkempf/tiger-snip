@@ -116,8 +116,12 @@ LRESULT CALLBACK driveRecentCopyMenu(int code, WPARAM wp, LPARAM lp)
         if (message->message == WM_INITMENUPOPUP)
         {
             const auto menu = reinterpret_cast<HMENU>(message->wParam);
-            recentCopyMenuSeen = GetMenuItemCount(menu) == 3 && GetMenuItemID(menu, 0) == Copy &&
-                                 GetMenuItemID(menu, 1) == Save && GetMenuItemID(menu, 2) == SaveAs;
+            const int count = GetMenuItemCount(menu);
+            recentCopyMenuSeen = (count == 3 ||
+                                 (count == 6 && GetMenuItemID(menu, 4) == CopySnipText &&
+                                  GetMenuItemID(menu, 5) == Clear)) &&
+                                 GetMenuItemID(menu, 0) == Copy && GetMenuItemID(menu, 1) == Save &&
+                                 GetMenuItemID(menu, 2) == SaveAs;
             PostMessageW(message->hwnd, WM_CHAR, snipMenuChoice == Copy ? L'c' : L's', 0);
         }
     }

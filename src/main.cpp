@@ -135,7 +135,6 @@ enum Command
     TextAlignCenter,
     TextAlignRight,
     KeepAnnotationToolActive,
-    EditorMenu,
     ClipboardHistory,
     SettingsHistoryKey,
     SettingsPageFirst = 2100,
@@ -1883,8 +1882,6 @@ void buildButtons()
             x = 238;
             add(Redo, L"", 32, 14);
             x = 278;
-            add(EditorMenu, L"\u2026", 32, 14);
-            x = 318;
             add(ClipboardHistory, L"", 36, 14);
             x = client.right - 340;
             add(RecentSnips, L"Recent", 112, 14);
@@ -2246,9 +2243,6 @@ void buildButtons()
                 break;
             case AppMenu:
                 hint = L"Preferences (F10)";
-                break;
-            case EditorMenu:
-                hint = L"App menu";
                 break;
             case CaptureMenu:
                 hint = L"Choose area or full-desktop capture";
@@ -4522,6 +4516,14 @@ HMENU snipActionsMenu(bool shortcuts)
         AppendMenuW(menu, MF_STRING, Save, shortcuts ? L"&Save\tCtrl+S" : L"&Save");
         AppendMenuW(menu, MF_STRING, SaveAs,
                     shortcuts ? L"Save &as...\tCtrl+Shift+S" : L"Save &as...");
+        if (shortcuts)
+        {
+            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(menu, MF_STRING | (enabled(CopySnipText) ? 0 : MF_GRAYED),
+                        CopySnipText, L"Copy text from snip");
+            AppendMenuW(menu, MF_STRING | (app.document.items.empty() ? MF_GRAYED : 0),
+                        Clear, L"Clear annotations");
+        }
         SetMenuDefaultItem(menu, Copy, FALSE);
     }
     return menu;
@@ -5359,29 +5361,6 @@ void command(int id, bool editSelectedStyle)
         AppendMenuW(menu, MF_STRING, InstantSnip, L"Capture all monitors now");
         AppendMenuW(menu, MF_STRING, TextSnip, L"Copy text from an area");
         POINT anchor{static_cast<LONG>(20 * app.dpi), static_cast<LONG>(54 * app.dpi)};
-        ClientToScreen(app.window, &anchor);
-        const int choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, anchor.x, anchor.y,
-                                          0, app.window, nullptr);
-        DestroyMenu(menu);
-        if (choice)
-            command(choice);
-        break;
-    }
-    case EditorMenu: {
-        HMENU menu = CreatePopupMenu();
-        if (!menu)
-            break;
-        AppendMenuW(menu, MF_STRING, Preferences, L"Preferences...");
-        AppendMenuW(menu, MF_STRING, ClipboardHistory, historyMenuLabel().c_str());
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING | (enabled(CopySnipText) ? 0 : MF_GRAYED), CopySnipText, L"Copy text from snip");
-        AppendMenuW(menu, MF_STRING | (enabled(Clear) ? 0 : MF_GRAYED), Clear, L"Clear annotations");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING, FullScreen, app.fullScreen ? L"Exit full screen\tF11" : L"Full screen\tF11");
-        AppendMenuW(menu, MF_STRING, About, L"About and shortcuts");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING, Exit, L"Exit Tiger Snip");
-        POINT anchor{static_cast<LONG>(278 * app.dpi), static_cast<LONG>(54 * app.dpi)};
         ClientToScreen(app.window, &anchor);
         const int choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, anchor.x, anchor.y,
                                           0, app.window, nullptr);

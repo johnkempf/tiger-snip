@@ -98,21 +98,21 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
         if (!(app.collapsedRows & 1))
         {
             fill({188, 20, 189, 44}, edge);
-            fill({286, 20, 287, 44}, edge);
+            fill({326, 20, 327, 44}, edge);
             const float right = client.right - 360;
-            if (right > 388)
+            if (right > 368)
             {
                 std::wstring filename =
                     hasImage() ? app.savePath.empty()
                                      ? L"Snip " + std::to_wstring(std::max(1U, app.recentSequence))
                                      : std::filesystem::path(app.savePath).filename().wstring()
                                : L"Tiger Snip";
-                text(filename, {366, 11, right, 32}, Ink);
+                text(filename, {346, 11, right, 32}, Ink);
                 text(hasImage() ? app.dirty              ? L"Unsaved changes"
                                   : app.savePath.empty() ? L"Captured locally"
                                                          : L"Saved locally"
                                 : L"Capture. Annotate. Share.",
-                     {366, 32, right, 52}, Muted, app.graphics.smallFont.get());
+                     {346, 32, right, 52}, Muted, app.graphics.smallFont.get());
             }
         }
         if (hasImage() && !(app.collapsedRows & 4))

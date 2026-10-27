@@ -29,7 +29,7 @@ Saved selections of the retired Orange preset switch to Purple; saved custom col
 
 ## Use
 
-Click the **clipboard icon** next to the app menu (Classic UI: next to Crop), or press
+Click the **clipboard icon** next to Redo (Classic UI: next to Crop), or press
 **Ctrl+Alt+V** from any app, to open a small text-history popup near the cursor.
 Change or disable this shortcut under **Preferences → Keybinds → Open clipboard history**.
 It opens the list; selecting an entry copies that text again.
@@ -77,7 +77,7 @@ recognized lines. **Esc** cancels; a selection with no text leaves your clipboar
 The editor stays hidden after a text capture, including when it was open or minimized
 beforehand. The current snip is preserved. Change or disable this shortcut under
 **Preferences → Keybinds**. The capture menu
-also offers **Copy text from an area**; **App menu → Copy text from snip** (Classic UI: **File**) extracts
+also offers **Copy text from an area**; **right-click the image → Copy text from snip** (Classic UI: **File**) extracts
 text from the current screenshot. OCR can confuse small or blurry characters, so check
 the preview for exact identifiers and zoom in before selecting when needed.
 
@@ -104,8 +104,9 @@ Corners scale the font. Resizing supports Undo/Redo and **Esc** cancellation.
 
 The **Settings** gear (or **F10**) opens the full settings panel in either UI. In Top toolbars,
 you can also use **Settings → Preferences...**. **Appearance → New UI** switches to Side panels;
-**Classic UI** returns to Top toolbars. The panel includes appearance, capture,
-saving/export and view options. Preferences save immediately. Choose **Purple**, **Blue**
+**Classic UI** returns to Top toolbars. The panel includes appearance, keybinds,
+saving/export and view options. **About → Exit Tiger Snip** quits the app completely.
+Right-click the image for **Clear annotations**. Preferences save immediately. Choose **Purple**, **Blue**
 or **Teal**, then **Light** or **Dark**; both choices work with either layout and affect only
 the editor. **Custom color** opens the color spectrum with RGB and hex input for your own UI
 accent. Apply saves it; Cancel keeps the previous theme. Capture buttons show the exact chosen

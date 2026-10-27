@@ -222,7 +222,8 @@ SettingsPanelLayout settingsPanelLayout()
         row(0, SettingsControlKind::Text, L"Choose tools from the toolbar.",
             L"Plain letter keys do not activate tools.", 64);
         row(0, SettingsControlKind::Text, L"Close the window to keep Tiger Snip in the tray.",
-            L"App menu \u2192 Exit Tiger Snip quits the app. Classic UI: File \u2192 Exit.", 64);
+            L"Use Exit Tiger Snip below to quit the app. Classic UI: File \u2192 Exit.", 64);
+        row(Exit, SettingsControlKind::Button, L"Exit Tiger Snip", L"Quit the app completely.", 56);
         break;
     }
     l.maxScroll = std::max(0.0f, y - l.body.height());
