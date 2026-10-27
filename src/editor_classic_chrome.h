@@ -251,7 +251,7 @@ void paintClassicEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush
             text(button.label, {r.left + inset + 27, r.top, r.right - 4, r.bottom}, fg,
                  app.graphics.font.get());
         }
-        else if (textAlignmentCommand(button.command))
+        else if (button.command == ClipboardHistory || textAlignmentCommand(button.command))
             drawUIIcon(rt, brush, button.command,
                        {(r.left + r.right) / 2 - 10, (r.top + r.bottom) / 2 - 10}, fg);
         else if (button.command == RecentSnips)

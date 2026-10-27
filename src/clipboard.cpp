@@ -8,6 +8,7 @@
 #include <climits>
 #include <cstring>
 #include <stdexcept>
+#include <cwctype>
 
 namespace snip
 {
@@ -325,6 +326,68 @@ std::optional<Bitmap> readClipboardBitmap(HWND owner, Graphics &graphics)
         catch (const std::runtime_error &) { }
     }
     return std::nullopt;
+}
+void ClipboardTextHistory::record(const std::wstring &text)
+{
+    if (text.empty() || text.size() > MaxTextLength ||
+        std::all_of(text.begin(), text.end(), [](wchar_t c) { return std::iswspace(c); }))
+        return;
+    const auto existing = std::find(items.begin(), items.end(), text);
+    if (existing != items.end()) items.erase(existing);
+    items.insert(items.begin(), text);
+    if (items.size() > Capacity) items.resize(Capacity);
+}
+std::wstring clipboardHistoryLabel(const std::wstring &text)
+{
+    std::wstring result;
+    bool space = false;
+    size_t i = 0;
+    for (; i < text.size() && result.size() < 80; ++i)
+    {
+        const wchar_t c = text[i];
+        if (std::iswspace(c) || std::iswcntrl(c))
+        {
+            space = !result.empty();
+            continue;
+        }
+        if (space) result += L' ';
+        space = false;
+        result += c;
+    }
+    if (i < text.size())
+    {
+        if (!result.empty() && result.back() >= 0xd800 && result.back() <= 0xdbff)
+            result.pop_back();
+        result += L"\u2026";
+    }
+    return result;
+}
+bool readClipboardHistoryText(HWND owner, std::wstring &text)
+{
+    text.clear();
+    if (!OpenClipboard(owner)) return false;
+    struct Close { ~Close() { CloseClipboard(); } } close;
+    if (IsClipboardFormatAvailable(RegisterClipboardFormatW(L"ExcludeClipboardContentFromMonitorProcessing")))
+        return true;
+    if (HANDLE flag = GetClipboardData(RegisterClipboardFormatW(L"CanIncludeInClipboardHistory")))
+    {
+        if (GlobalSize(flag) < sizeof(DWORD)) return true;
+        const auto *value = static_cast<const DWORD *>(GlobalLock(flag));
+        if (!value) return true;
+        const bool excluded = *value == 0;
+        GlobalUnlock(flag);
+        if (excluded) return true;
+    }
+    HANDLE memory = GetClipboardData(CF_UNICODETEXT);
+    const size_t bytes = memory ? GlobalSize(memory) : 0;
+    if (bytes < sizeof(wchar_t) || bytes > (ClipboardTextHistory::MaxTextLength + 1) * sizeof(wchar_t))
+        return true;
+    const auto *data = static_cast<const wchar_t *>(GlobalLock(memory));
+    if (!data) return true;
+    struct Unlock { HANDLE memory; ~Unlock() { GlobalUnlock(memory); } } unlock{memory};
+    const auto *end = std::find(data, data + bytes / sizeof(wchar_t), L'\0');
+    if (end != data + bytes / sizeof(wchar_t)) text.assign(data, end);
+    return true;
 }
 bool copyText(HWND owner, const std::wstring &text, ClipboardFailure *failure)
 {

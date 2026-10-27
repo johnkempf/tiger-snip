@@ -100,19 +100,19 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
             fill({188, 20, 189, 44}, edge);
             fill({286, 20, 287, 44}, edge);
             const float right = client.right - 360;
-            if (right > 328)
+            if (right > 388)
             {
                 std::wstring filename =
                     hasImage() ? app.savePath.empty()
                                      ? L"Snip " + std::to_wstring(std::max(1U, app.recentSequence))
                                      : std::filesystem::path(app.savePath).filename().wstring()
                                : L"Tiger Snip";
-                text(filename, {306, 11, right, 32}, Ink);
+                text(filename, {366, 11, right, 32}, Ink);
                 text(hasImage() ? app.dirty              ? L"Unsaved changes"
                                   : app.savePath.empty() ? L"Captured locally"
                                                          : L"Saved locally"
                                 : L"Capture. Annotate. Share.",
-                     {306, 32, right, 52}, Muted, app.graphics.smallFont.get());
+                     {366, 32, right, 52}, Muted, app.graphics.smallFont.get());
             }
         }
         if (hasImage() && !(app.collapsedRows & 4))
@@ -464,7 +464,7 @@ void paintEditorChrome(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush)
                          app.graphics.smallFont.get(), true);
                 }
             }
-            else if (b.command == Undo || b.command == Redo || b.command == CustomColor ||
+            else if (b.command == ClipboardHistory || b.command == Undo || b.command == Redo || b.command == CustomColor ||
                      b.command == Eyedropper)
                 drawUIIcon(rt, brush, b.command,
                            {(r.left + r.right) / 2 - 10, (r.top + r.bottom) / 2 - 10}, fg);

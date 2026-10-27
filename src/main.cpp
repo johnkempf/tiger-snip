@@ -5,6 +5,7 @@
 #include "test_hooks.h"
 #include "capture.h"
 #include "clipboard.h"
+#include "clipboard_history_popup.h"
 #include "ocr.h"
 #include "text_notice.h"
 #include "file_io.h"
@@ -34,8 +35,10 @@ constexpr wchar_t MainClass[] = L"TigerSnip.Main.1", OverlayClass[] = L"TigerSni
                   SettingsClass[] = L"TigerSnip.Settings.1",
                   DiagnosticClass[] = L"TigerSnip.ResizeDiagnostic.1";
 constexpr UINT TrayMessage = WM_APP + 20, LaunchMessage = WM_APP + 21;
+constexpr UINT HistoryCopyMessage = WM_APP + 22, HistoryClearMessage = WM_APP + 23;
 constexpr UINT CaptureTimer = 1, StatusTimer = 2, SmokeTimer = 3, CopyFlashTimer = 4,
-               SizeRepeatTimer = 5, TraceHeartbeatTimer = 6, TextRecognitionTimer = 7;
+               SizeRepeatTimer = 5, TraceHeartbeatTimer = 6, TextRecognitionTimer = 7,
+               ClipboardHistoryTimer = 8;
 constexpr UINT SizeRepeatDelay = 300, SizeRepeatInterval = 35;
 constexpr ULONGLONG CopyPulseDuration = 500, CopyNoticeDuration = 1400;
 constexpr float StatusHeight = 32;
@@ -133,6 +136,8 @@ enum Command
     TextAlignRight,
     KeepAnnotationToolActive,
     EditorMenu,
+    ClipboardHistory,
+    SettingsHistoryKey,
     SettingsPageFirst = 2100,
     SettingsPageLast = SettingsPageFirst + 5,
     ColorFirst = PaletteFirst,
@@ -229,7 +234,8 @@ struct Application
     unsigned resizeTestPaints = 0;
     HINSTANCE instance = nullptr;
     HWND window = nullptr, overlay = nullptr, settingsWindow = nullptr, hotkeyControl = nullptr,
-         instantHotkeyControl = nullptr, textHotkeyControl = nullptr, tooltip = nullptr;
+         instantHotkeyControl = nullptr, textHotkeyControl = nullptr, historyHotkeyControl = nullptr,
+         tooltip = nullptr;
     HDC overlayDC = nullptr;
     HBITMAP overlaySurface = nullptr;
     HGDIOBJ overlayPrevious = nullptr;
@@ -301,6 +307,11 @@ struct Application
     POINT textNoticePoint{};
     DWORD textClipboardSequence = 0;
     TextNotice textNotice;
+    ClipboardTextHistory clipboardHistory;
+    ClipboardHistoryPopup historyPopup;
+    DWORD historySequence = 0;
+    unsigned historyRetries = 0;
+    bool historyListening = false, historyHotkeyRegistered = false;
     struct TextResult
     {
         std::wstring text;
@@ -347,9 +358,11 @@ struct Application
     WORD hotkey = MAKEWORD('S', HOTKEYF_CONTROL | HOTKEYF_ALT);
     WORD instantHotkey = MAKEWORD('F', HOTKEYF_CONTROL | HOTKEYF_ALT);
     WORD textHotkey = MAKEWORD('T', HOTKEYF_CONTROL | HOTKEYF_ALT);
+    WORD historyHotkey = MAKEWORD('V', HOTKEYF_CONTROL | HOTKEYF_ALT);
     int hotkeyId = 1;
     int instantHotkeyId = 3;
     int textHotkeyId = 5;
+    int historyHotkeyId = 7;
     bool hotkeyRegistered = false;
     bool instantHotkeyRegistered = false;
     bool textHotkeyRegistered = false;
@@ -785,6 +798,7 @@ bool saveToolPreferences()
             setting(L"Settings", L"Hotkey", app.hotkey);
             setting(L"Settings", L"InstantHotkey", app.instantHotkey);
             setting(L"Settings", L"TextHotkey", app.textHotkey);
+            setting(L"Settings", L"HistoryHotkey", app.historyHotkey);
         }
         if (app.screenshotTotalDirty)
             setting(L"Statistics", L"TotalScreenshots", app.totalScreenshots);
@@ -918,7 +932,7 @@ WORD shortcutFromHotkey(LPARAM info)
     return MAKEWORD(static_cast<BYTE>(key), flags);
 }
 bool registerShortcuts(WORD area, WORD full, bool notify = true, std::wstring *failure = nullptr,
-                       WORD text = app.textHotkey)
+                       WORD text = app.textHotkey, WORD history = app.historyHotkey)
 {
     if (failure)
         failure->clear();
@@ -930,7 +944,7 @@ bool registerShortcuts(WORD area, WORD full, bool notify = true, std::wstring *f
                         L"Choose different shortcuts", MB_OK | MB_ICONINFORMATION);
         return false;
     };
-    const std::array<WORD, 3> values{area, full, text};
+    const std::array<WORD, 4> values{area, full, text, history};
     for (WORD value : values)
     {
         BYTE key = LOBYTE(value), flags = HIBYTE(value);
@@ -947,13 +961,13 @@ bool registerShortcuts(WORD area, WORD full, bool notify = true, std::wstring *f
         for (size_t j = i + 1; j < values.size(); ++j)
             if (LOBYTE(values[i]) && LOBYTE(values[i]) == LOBYTE(values[j]) &&
                 hotkeyModifiers(values[i]) == hotkeyModifiers(values[j]))
-                return reject(L"Area, all monitors and text capture need different shortcuts.");
-    const std::array<WORD, 3> previous{app.hotkey, app.instantHotkey, app.textHotkey};
-    const std::array<int, 3> oldIds{app.hotkeyId, app.instantHotkeyId, app.textHotkeyId};
-    const std::array<bool, 3> registered{app.hotkeyRegistered, app.instantHotkeyRegistered,
-                                         app.textHotkeyRegistered};
-    const std::array<int, 3> ids{app.hotkeyId == 1 ? 2 : 1, app.instantHotkeyId == 3 ? 4 : 3,
-                                 app.textHotkeyId == 5 ? 6 : 5};
+                return reject(L"Each action needs a different keybind.");
+    const std::array<WORD, 4> previous{app.hotkey, app.instantHotkey, app.textHotkey, app.historyHotkey};
+    const std::array<int, 4> oldIds{app.hotkeyId, app.instantHotkeyId, app.textHotkeyId, app.historyHotkeyId};
+    const std::array<bool, 4> registered{app.hotkeyRegistered, app.instantHotkeyRegistered,
+                                         app.textHotkeyRegistered, app.historyHotkeyRegistered};
+    const std::array<int, 4> ids{app.hotkeyId == 1 ? 2 : 1, app.instantHotkeyId == 3 ? 4 : 3,
+                                 app.textHotkeyId == 5 ? 6 : 5, app.historyHotkeyId == 7 ? 8 : 7};
     for (size_t i = 0; i < values.size(); ++i)
         if (registered[i])
             UnregisterHotKey(app.window, oldIds[i]);
@@ -968,8 +982,8 @@ bool registerShortcuts(WORD area, WORD full, bool notify = true, std::wstring *f
         for (size_t i = 0; i < accepted; ++i)
             if (LOBYTE(values[i]))
                 UnregisterHotKey(app.window, ids[i]);
-        std::array<bool *, 3> state{&app.hotkeyRegistered, &app.instantHotkeyRegistered,
-                                    &app.textHotkeyRegistered};
+        std::array<bool *, 4> state{&app.hotkeyRegistered, &app.instantHotkeyRegistered,
+                                    &app.textHotkeyRegistered, &app.historyHotkeyRegistered};
         for (size_t i = 0; i < values.size(); ++i)
             *state[i] =
                 registered[i] && RegisterHotKey(app.window, oldIds[i], hotkeyModifiers(previous[i]),
@@ -985,13 +999,21 @@ bool registerShortcuts(WORD area, WORD full, bool notify = true, std::wstring *f
     app.hotkey = area;
     app.instantHotkey = full;
     app.textHotkey = text;
+    app.historyHotkey = history;
     app.hotkeyId = ids[0];
     app.instantHotkeyId = ids[1];
     app.textHotkeyId = ids[2];
+    app.historyHotkeyId = ids[3];
     app.hotkeyRegistered = LOBYTE(area) != 0;
     app.instantHotkeyRegistered = LOBYTE(full) != 0;
     app.textHotkeyRegistered = LOBYTE(text) != 0;
+    app.historyHotkeyRegistered = LOBYTE(history) != 0;
     return true;
+}
+std::wstring historyMenuLabel()
+{
+    return L"Clipboard history" + (app.historyHotkeyRegistered ? L"\t" + hotkeyName(app.historyHotkey)
+                                                               : std::wstring{});
 }
 bool startupEnabled()
 {
@@ -1862,6 +1884,8 @@ void buildButtons()
             add(Redo, L"", 32, 14);
             x = 278;
             add(EditorMenu, L"\u2026", 32, 14);
+            x = 318;
+            add(ClipboardHistory, L"", 36, 14);
             x = client.right - 340;
             add(RecentSnips, L"Recent", 112, 14);
             x += 12;
@@ -2003,6 +2027,16 @@ void buildButtons()
         }
     }
 
+    if (app.classicUI && !app.fullScreen && !(app.collapsedRows & 1))
+    {
+        x = 470;
+        add(ClipboardHistory, L"", 36, 11);
+    }
+    if (app.fullScreen || (app.collapsedRows & 1))
+    {
+        x = clientDips().right - 254;
+        add(ClipboardHistory, L"", 32, clientDips().bottom - StatusHeight + 3, 26);
+    }
     if (!hasImage() && canvasRect().height() > 290)
         app.buttons.push_back({welcomeCaptureRect(), WelcomeCapture, L""});
 
@@ -2099,6 +2133,9 @@ void buildButtons()
                 break;
             case RecentSnips:
                 hint = L"Reopen one of the last 10 snips from this session (Ctrl+Shift+R)";
+                break;
+            case ClipboardHistory:
+                hint = L"Clipboard history - select text to copy again; change its shortcut in Keybinds";
                 break;
             case RecentClose:
                 hint = L"Close recent snips (Esc)";
@@ -2516,6 +2553,12 @@ void drawUIIcon(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush, int id, Poin
     };
     switch (id)
     {
+    case ClipboardHistory:
+        box(4, 4, 17, 19);
+        box(7, 1, 14, 6);
+        line(7, 10, 14, 10);
+        line(7, 14, 14, 14);
+        break;
     case TextAlignLeft:
     case TextAlignCenter:
     case TextAlignRight:
@@ -2653,7 +2696,8 @@ void drawUIIcon(ID2D1RenderTarget *rt, ID2D1SolidColorBrush *brush, int id, Poin
 Rect screenshotCounterRect()
 {
     const auto client = clientDips();
-    const float right = client.right - (app.classicUI && !hasImage() ? 14 : 214);
+    const float right = client.right - (app.fullScreen || (app.collapsedRows & 1) ? 266 :
+        app.classicUI && !hasImage() ? 14 : 214);
     return {right - 180, client.bottom - StatusHeight, right, client.bottom};
 }
 #include "editor_chrome.h"
@@ -4774,6 +4818,7 @@ void closeSettings()
         app.hotkeyControl = nullptr;
         app.instantHotkeyControl = nullptr;
         app.textHotkeyControl = nullptr;
+        app.historyHotkeyControl = nullptr;
         EnableWindow(app.window, TRUE);
         DestroyWindow(window);
         SetForegroundWindow(app.window);
@@ -4790,8 +4835,8 @@ void openSettings()
     float d = app.dpi;
     RECT owner{};
     GetWindowRect(app.window, &owner);
-    int width = static_cast<int>(460 * d), height = static_cast<int>(430 * d);
-    app.settingsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, SettingsClass, L"Keyboard shortcuts",
+    int width = static_cast<int>(460 * d), height = static_cast<int>(510 * d);
+    app.settingsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, SettingsClass, L"Keybinds",
                                          WS_CAPTION | WS_SYSMENU,
                                          owner.left + (owner.right - owner.left - width) / 2,
                                          owner.top + (owner.bottom - owner.top - height) / 2, width,
@@ -4802,12 +4847,44 @@ void openSettings()
     ShowWindow(app.settingsWindow, SW_SHOW);
     SetFocus(app.hotkeyControl);
 }
+void collectClipboardHistory()
+{
+    if (app.historySequence == GetClipboardSequenceNumber())
+        return;
+    std::wstring text;
+    if (!readClipboardHistoryText(app.window, text))
+    {
+        if (++app.historyRetries <= 10)
+            SetTimer(app.window, ClipboardHistoryTimer, 50, nullptr);
+        return;
+    }
+    KillTimer(app.window, ClipboardHistoryTimer);
+    app.historyRetries = 0;
+    app.historySequence = GetClipboardSequenceNumber();
+    app.clipboardHistory.record(text);
+}
+void showClipboardHistory(POINT anchor)
+{
+    if (app.historyPopup.window())
+    {
+        app.historyPopup.close();
+        return;
+    }
+    if (app.overlay || app.capturePending || app.settingsWindow || app.themePickerOpen)
+        return;
+    collectClipboardHistory();
+    app.textNotice.close();
+    app.historyPopup.show(app.window, app.clipboardHistory.entries(), anchor, app.darkTheme,
+                           Accent, HistoryCopyMessage, HistoryClearMessage,
+                           app.historyHotkeyRegistered ? hotkeyName(app.historyHotkey) : std::wstring{});
+}
 void trayMenu()
 {
     HMENU menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING, NewSnip, L"Snip now");
     AppendMenuW(menu, MF_STRING, InstantSnip, L"Capture all monitors now");
     AppendMenuW(menu, MF_STRING, TextSnip, L"Copy text from an area");
+    AppendMenuW(menu, MF_STRING, ClipboardHistory, historyMenuLabel().c_str());
     AppendMenuW(menu, MF_STRING, ShowEditor, L"Open editor");
     AppendMenuW(menu, MF_STRING, Preferences, L"Preferences...");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -5009,6 +5086,13 @@ void showShapeChoices(int id)
 }
 void command(int id, bool editSelectedStyle)
 {
+    if (id == ClipboardHistory)
+    {
+        POINT anchor{};
+        GetCursorPos(&anchor);
+        showClipboardHistory(anchor);
+        return;
+    }
     if (id >= SettingsPageFirst && id <= SettingsPageLast)
     {
         app.settingsPage = id - SettingsPageFirst;
@@ -5223,6 +5307,7 @@ void command(int id, bool editSelectedStyle)
     case SettingsAreaKey:
     case SettingsAllKey:
     case SettingsTextKey:
+    case SettingsHistoryKey:
         app.settingsRecording = id;
         app.settingsError.clear();
         buildButtons();
@@ -5287,6 +5372,7 @@ void command(int id, bool editSelectedStyle)
         if (!menu)
             break;
         AppendMenuW(menu, MF_STRING, Preferences, L"Preferences...");
+        AppendMenuW(menu, MF_STRING, ClipboardHistory, historyMenuLabel().c_str());
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING | (enabled(CopySnipText) ? 0 : MF_GRAYED), CopySnipText, L"Copy text from snip");
         AppendMenuW(menu, MF_STRING | (enabled(Clear) ? 0 : MF_GRAYED), Clear, L"Clear annotations");
@@ -6063,6 +6149,7 @@ HMENU createMenu()
     AppendMenuW(file, MF_STRING, Exit, L"E&xit");
     AppendMenuW(edit, MF_STRING, Undo, L"&Undo\tCtrl+Z");
     AppendMenuW(edit, MF_STRING, Redo, L"&Redo\tCtrl+Y");
+    AppendMenuW(edit, MF_STRING, ClipboardHistory, historyMenuLabel().c_str());
     AppendMenuW(edit, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(edit, MF_STRING, DeleteSelected, L"&Delete selection\tDel");
     AppendMenuW(edit, MF_STRING, Clear, L"Clear &annotations");
@@ -6091,6 +6178,12 @@ HMENU createMenu()
 void updateMenus()
 {
     HMENU menu = app.fullScreen || app.menuHidden ? app.windowedMenu : GetMenu(app.window);
+    const auto historyLabel = historyMenuLabel();
+    MENUITEMINFOW historyInfo{};
+    historyInfo.cbSize = sizeof(historyInfo);
+    historyInfo.fMask = MIIM_STRING;
+    historyInfo.dwTypeData = const_cast<LPWSTR>(historyLabel.c_str());
+    SetMenuItemInfoW(menu, ClipboardHistory, FALSE, &historyInfo);
     const wchar_t *labels[] = {app.classicUI ? L"&Actions" : L"&Command bar",
                                app.classicUI ? L"&Tools and shapes" : L"&Tool rail",
                                app.classicUI ? L"&Color and size" : L"&Properties panel"};
@@ -6125,11 +6218,13 @@ void settingsPanelShortcut(WORD shortcut)
     const WORD area = app.settingsRecording == SettingsAreaKey ? shortcut : app.hotkey;
     const WORD all = app.settingsRecording == SettingsAllKey ? shortcut : app.instantHotkey;
     const WORD text = app.settingsRecording == SettingsTextKey ? shortcut : app.textHotkey;
-    if (registerShortcuts(area, all, false, &app.settingsError, text))
+    const WORD history = app.settingsRecording == SettingsHistoryKey ? shortcut : app.historyHotkey;
+    if (registerShortcuts(area, all, false, &app.settingsError, text, history))
     {
         app.shortcutsDirty = true;
         saveToolPreferencesOrNotify();
         app.settingsRecording = 0;
+        updateMenus();
     }
     buildButtons();
     repaint();
@@ -6401,7 +6496,36 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
             SendMessageW(app.tooltip, TTM_SETMAXTIPWIDTH, 0, 360);
         }
         addTray();
+        app.historyListening = AddClipboardFormatListener(hwnd) != FALSE;
+        if (!app.historyListening)
+            throwWindowsError("Cannot monitor copied text for clipboard history.");
+        collectClipboardHistory();
         return 0;
+    case WM_CLIPBOARDUPDATE:
+        app.historyRetries = 0;
+        collectClipboardHistory();
+        return 0;
+    case HistoryClearMessage:
+        KillTimer(hwnd, ClipboardHistoryTimer);
+        app.historySequence = GetClipboardSequenceNumber();
+        app.clipboardHistory.clear();
+        return 0;
+    case HistoryCopyMessage: {
+        const auto &text = *reinterpret_cast<const std::wstring *>(lp);
+        ClipboardFailure failure;
+        if (!copyText(hwnd, text, &failure))
+        {
+            POINT anchor{}; GetCursorPos(&anchor);
+            app.textNotice.show(L"Clipboard busy", L"Try clicking the text again.", anchor,
+                                 app.darkTheme, Accent);
+            return FALSE;
+        }
+        app.clipboardHistory.record(text);
+        app.historySequence = GetClipboardSequenceNumber();
+        POINT anchor{}; GetCursorPos(&anchor);
+        app.textNotice.show(L"Text copied", text, anchor, app.darkTheme, Accent);
+        return TRUE;
+    }
     case WM_ERASEBKGND:
         return 1;
     case WM_NCPAINT:
@@ -6728,12 +6852,14 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
         {
             const HWND field = GetFocus();
             if (field == app.hotkeyControl || field == app.instantHotkeyControl ||
-                field == app.textHotkeyControl)
+                field == app.textHotkeyControl || field == app.historyHotkeyControl)
                 SendMessageW(field, HKM_SETHOTKEY, shortcutFromHotkey(lp), 0);
         }
         else if (!app.themePickerOpen)
         {
-            if (wp == static_cast<WPARAM>(app.hotkeyId))
+            if (wp == static_cast<WPARAM>(app.historyHotkeyId))
+                command(ClipboardHistory);
+            else if (wp == static_cast<WPARAM>(app.hotkeyId))
                 startSnip(true);
             else if (wp == static_cast<WPARAM>(app.instantHotkeyId))
                 startSnip(true, true);
@@ -6754,7 +6880,12 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
             showEditor();
         return 0;
     case WM_TIMER:
-        if (wp == TextRecognitionTimer)
+        if (wp == ClipboardHistoryTimer)
+        {
+            KillTimer(hwnd, ClipboardHistoryTimer);
+            collectClipboardHistory();
+        }
+        else if (wp == TextRecognitionTimer)
             completeTextRecognition();
         else if (wp == SizeRepeatTimer)
             repeatSize();
@@ -6822,6 +6953,15 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
             saveToolPreferences();
         return 0;
     case WM_DESTROY:
+        if (app.historyListening)
+            RemoveClipboardFormatListener(hwnd);
+        app.historyListening = false;
+        KillTimer(hwnd, ClipboardHistoryTimer);
+        if (app.historyHotkeyRegistered)
+            UnregisterHotKey(hwnd, app.historyHotkeyId);
+        app.historyHotkeyRegistered = false;
+        app.historyPopup.close(false);
+        app.clipboardHistory.clear();
         app.settingsPanelOpen = false;
         app.settingsRecording = 0;
         if (app.menuBackground)
@@ -7109,14 +7249,22 @@ LRESULT CALLBACK settingsProcedure(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
                 if (!SetWindowSubclass(app.textHotkeyControl, shortcutFieldProcedure, 1, 0))
                     throwWindowsError("Cannot initialize the text shortcut control.");
                 SendMessageW(app.textHotkeyControl, HKM_SETHOTKEY, app.textHotkey, 0);
+                control(L"STATIC", L"Open clipboard history (select text to copy again):", 0,
+                        20, 244, 395, 24, 0);
+                app.historyHotkeyControl =
+                    control(L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_READONLY | ES_AUTOHSCROLL,
+                            20, 274, 395, 30, 13);
+                if (!SetWindowSubclass(app.historyHotkeyControl, shortcutFieldProcedure, 1, 0))
+                    throwWindowsError("Cannot initialize the clipboard history shortcut control.");
+                SendMessageW(app.historyHotkeyControl, HKM_SETHOTKEY, app.historyHotkey, 0);
                 control(L"STATIC",
                         L"Use a single key or Ctrl/Alt/Shift/Win + key.\n"
                         L"Global shortcuts override other apps. F12 is reserved.\n"
                         L"Backspace disables. Print Screen may need the\n"
                         L"Windows screen capture shortcut turned off.",
-                        0, 20, 244, 395, 84, 0);
-                control(L"BUTTON", L"Save", WS_TABSTOP | BS_DEFPUSHBUTTON, 237, 340, 84, 30, IDOK);
-                control(L"BUTTON", L"Cancel", WS_TABSTOP, 331, 340, 84, 30, IDCANCEL);
+                        0, 20, 318, 395, 84, 0);
+                control(L"BUTTON", L"Save", WS_TABSTOP | BS_DEFPUSHBUTTON, 237, 414, 84, 30, IDOK);
+                control(L"BUTTON", L"Cancel", WS_TABSTOP, 331, 414, 84, 30, IDCANCEL);
                 return 0;
             }
             case WM_COMMAND:
@@ -7133,7 +7281,9 @@ LRESULT CALLBACK settingsProcedure(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
                         SendMessageW(app.instantHotkeyControl, HKM_GETHOTKEY, 0, 0));
                     WORD text =
                         static_cast<WORD>(SendMessageW(app.textHotkeyControl, HKM_GETHOTKEY, 0, 0));
-                    if (!registerShortcuts(value, full, true, nullptr, text))
+                    WORD history = static_cast<WORD>(
+                        SendMessageW(app.historyHotkeyControl, HKM_GETHOTKEY, 0, 0));
+                    if (!registerShortcuts(value, full, true, nullptr, text, history))
                         return 0;
                     app.shortcutsDirty = true;
                     bool saved = saveToolPreferences();
@@ -7148,7 +7298,8 @@ LRESULT CALLBACK settingsProcedure(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
             case WM_CTLCOLORSTATIC:
                 if (reinterpret_cast<HWND>(lp) == app.hotkeyControl ||
                     reinterpret_cast<HWND>(lp) == app.instantHotkeyControl ||
-                    reinterpret_cast<HWND>(lp) == app.textHotkeyControl)
+                    reinterpret_cast<HWND>(lp) == app.textHotkeyControl ||
+                    reinterpret_cast<HWND>(lp) == app.historyHotkeyControl)
                 {
                     HDC dc = reinterpret_cast<HDC>(wp);
                     SetBkColor(dc, GetSysColor(COLOR_WINDOW));
@@ -7168,7 +7319,8 @@ LRESULT CALLBACK settingsProcedure(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
             error(app.window, failure);
             if (message == WM_CREATE)
             {
-                app.hotkeyControl = app.instantHotkeyControl = app.textHotkeyControl = nullptr;
+                app.hotkeyControl = app.instantHotkeyControl = app.textHotkeyControl =
+                    app.historyHotkeyControl = nullptr;
                 EnableWindow(app.window, TRUE);
             }
             else
@@ -9474,6 +9626,8 @@ int applicationMain(HINSTANCE instance, int show)
                 preferenceUInt(app.iniPath, L"Settings", L"InstantHotkey", app.instantHotkey));
             app.textHotkey = static_cast<WORD>(
                 preferenceUInt(app.iniPath, L"Settings", L"TextHotkey", app.textHotkey));
+            app.historyHotkey = static_cast<WORD>(
+                preferenceUInt(app.iniPath, L"Settings", L"HistoryHotkey", app.historyHotkey));
             HDC dc = GetDC(nullptr);
             if (!dc)
                 throwWindowsError("Cannot read the desktop display settings.");
@@ -9514,16 +9668,22 @@ int applicationMain(HINSTANCE instance, int show)
                 app.smoke || app.resizeTest || app.diagnosticInstance ? 0 : app.instantHotkey;
             WORD initialText =
                 app.smoke || app.resizeTest || app.diagnosticInstance ? 0 : app.textHotkey;
+            WORD initialHistory =
+                app.smoke || app.resizeTest || app.diagnosticInstance ? 0 : app.historyHotkey;
             app.hotkey = 0;
             app.instantHotkey = 0;
             app.textHotkey = 0;
-            if (!registerShortcuts(initial, initialFull, false, nullptr, initialText))
+            app.historyHotkey = 0;
+            if (!registerShortcuts(initial, initialFull, false, nullptr, initialText, initialHistory))
             {
                 // Preserve each available shortcut independently when another is occupied.
-                registerShortcuts(initial, 0, false, nullptr, 0);
-                registerShortcuts(app.hotkey, initialFull, false, nullptr, 0);
-                registerShortcuts(app.hotkey, app.instantHotkey, false, nullptr, initialText);
-                status(L"A shortcut is unavailable - choose another in Settings");
+                registerShortcuts(initial, 0, false, nullptr, 0, 0);
+                registerShortcuts(app.hotkey, initialFull, false, nullptr, 0, 0);
+                registerShortcuts(app.hotkey, app.instantHotkey, false, nullptr, initialText, 0);
+                if (!registerShortcuts(app.hotkey, app.instantHotkey, false, nullptr,
+                                      app.textHotkey, initialHistory))
+                    app.historyHotkey = initialHistory;
+                status(L"A shortcut is unavailable - choose another in Preferences > Keybinds");
             }
             if (!trayOnly || !app.tray)
             {

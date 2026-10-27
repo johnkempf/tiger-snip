@@ -3,7 +3,7 @@ project(TigerSnip VERSION 1.0.2 LANGUAGES CXX RC)
 set(TIGER_SNIP_CORE_SOURCES
   src/model.cpp src/graphics.cpp src/windows_support.cpp src/settings.cpp
   src/color_picker.cpp src/capture.cpp src/clipboard.cpp src/file_io.cpp src/test_reports.cpp
-  src/ocr.cpp src/ocr_layout.cpp src/text_notice.cpp)
+  src/ocr.cpp src/ocr_layout.cpp src/text_notice.cpp src/clipboard_history_popup.cpp)
 function(tiger_snip_target target)
   target_compile_features(${target} PRIVATE cxx_std_20)
   target_compile_definitions(${target} PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
@@ -23,7 +23,7 @@ tiger_snip_target(TigerSnip)
 include(CTest)
 if(BUILD_TESTING)
   add_test(NAME native_self_test COMMAND TigerSnip --self-test)
-  foreach(test clipboard autocopy file_save settings robustness text_edit text_capture ui image_edit native_menu single_instance)
+  foreach(test clipboard clipboard_history autocopy file_save settings robustness text_edit text_capture ui image_edit native_menu single_instance)
     add_executable(${test}_test tests/${test}.cpp ${TIGER_SNIP_CORE_SOURCES} resources/app.rc)
     tiger_snip_target(${test}_test)
     if(test STREQUAL "robustness" OR test STREQUAL "file_save")

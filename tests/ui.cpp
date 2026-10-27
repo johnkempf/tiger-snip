@@ -725,7 +725,7 @@ int wmain()
         require(app.settingsPanelOpen && !app.settingsRecording && app.hotkey == savedArea,
                 "Cancelling shortcut recording changed the shortcut or closed Settings.");
         SetKeyboardState(previousKeyboard);
-        saveBytes(L"ui-settings-capture.png", app.graphics.png(renderEditorPreview()));
+        saveBytes(L"ui-settings-keybinds.png", app.graphics.png(renderEditorPreview()));
         command(SettingsPageFirst);
         // Themes apply independently of layout and never change the rendered export.
         for (int appearance : {AppearanceLight, AppearanceDark})

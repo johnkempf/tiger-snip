@@ -15,6 +15,7 @@ Tiger Snip is a local Windows screenshot and annotation tool. Capture an area or
 - Light or Dark appearance in either layout.
 - Stroke presets plus an adjustable pixel slider, and per-annotation opacity.
 - Optional borders, Samtec logos, and capture shortcuts.
+- Clipboard text history: a clipboard icon and global **Ctrl+Alt+V** picker.
 
 ## Installation
 
@@ -27,6 +28,20 @@ Existing users keep their saved layout and colors.
 Saved selections of the retired Orange preset switch to Purple; saved custom colors are retained.
 
 ## Use
+
+Click the **clipboard icon** next to the app menu (Classic UI: next to Crop), or press
+**Ctrl+Alt+V** from any app, to open a small text-history popup near the cursor.
+Change or disable this shortcut under **Preferences → Keybinds → Open clipboard history**.
+It opens the list; selecting an entry copies that text again.
+Click an entry to copy its full text again, then paste as usual. It keeps your last
+20 distinct text copies across apps, newest first, while Tiger Snip is running;
+repeated text moves to the top. Scroll for older entries, or use arrow keys and Enter.
+**Esc** or clicking outside dismisses it. The icon stays available with no snip open;
+when the command bar is hidden or fullscreen, it moves to the bottom bar.
+History stays in memory, clears on Exit, and can be emptied with **Clear history**.
+Images, blank text, entries over one million characters, and text explicitly excluded
+from clipboard history by its source app are skipped. If **Ctrl+Alt+V** is already in
+use, the icon still works and **Keybinds** shows that the shortcut is unavailable.
 
 Click **New snip** and drag a rectangle. **Ctrl+C** copies a selected annotation; **Ctrl+V** pastes an editable duplicate. With nothing selected, **Ctrl+C** copies the whole image. The toolbar **Copy** button always copies the whole image. Press **Ctrl+S** to save.
 **Ctrl+S**, **Ctrl+Shift+S**, and the top-right **Save as** button always open the modern
@@ -61,7 +76,7 @@ visible; click to dismiss. Long previews are shortened, while the clipboard cont
 recognized lines. **Esc** cancels; a selection with no text leaves your clipboard unchanged.
 The editor stays hidden after a text capture, including when it was open or minimized
 beforehand. The current snip is preserved. Change or disable this shortcut under
-**Preferences → Capture**. The capture menu
+**Preferences → Keybinds**. The capture menu
 also offers **Copy text from an area**; **App menu → Copy text from snip** (Classic UI: **File**) extracts
 text from the current screenshot. OCR can confuse small or blurry characters, so check
 the preview for exact identifiers and zoom in before selecting when needed.

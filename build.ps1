@@ -11,7 +11,7 @@ if (-not $CompilerDirectory -or -not (Test-Path -LiteralPath (Join-Path $Compile
 }
 $taskCompiler = Join-Path $CompilerDirectory 'clang++.exe'
 $taskResourceCompiler = Join-Path $CompilerDirectory 'llvm-windres.exe'
-$taskSources = @('model', 'graphics', 'windows_support', 'settings', 'color_picker', 'capture', 'clipboard', 'file_io', 'test_reports', 'ocr', 'ocr_layout', 'text_notice') |
+$taskSources = @('model', 'graphics', 'windows_support', 'settings', 'color_picker', 'capture', 'clipboard', 'clipboard_history_popup', 'file_io', 'test_reports', 'ocr', 'ocr_layout', 'text_notice') |
     ForEach-Object { Join-Path $taskRoot "src\$_.cpp" }
 $taskBuild = Join-Path $taskRoot 'build'
 $taskDist = Join-Path $taskRoot 'dist'
@@ -44,6 +44,11 @@ if ($Test) {
     $taskAutoCopyArguments = @($taskAutoCopyArguments | Where-Object { $_ -ne '-mwindows' })
     & $taskCompiler @taskAutoCopyArguments
     if ($LASTEXITCODE -ne 0) { throw 'Auto copy test compilation failed.' }
+    $taskHistoryArguments = @($taskAutoCopyArguments)
+    $taskHistoryArguments[$taskHistoryArguments.IndexOf((Join-Path $taskRoot 'tests\autocopy.cpp'))] = Join-Path $taskRoot 'tests\clipboard_history.cpp'
+    $taskHistoryArguments[$taskHistoryArguments.IndexOf((Join-Path $taskBuild 'autocopy_test.exe'))] = Join-Path $taskBuild 'clipboard_history_test.exe'
+    & $taskCompiler @taskHistoryArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Clipboard history test compilation failed.' }
     $taskFileSaveArguments = @($taskClipboardArguments) + '-DTIGER_SNIP_TESTING'
     $taskFileSaveArguments[$taskFileSaveArguments.IndexOf((Join-Path $taskRoot 'tests\clipboard.cpp'))] = Join-Path $taskRoot 'tests\file_save.cpp'
     $taskFileSaveArguments[$taskFileSaveArguments.IndexOf((Join-Path $taskBuild 'clipboard_test.exe'))] = Join-Path $taskBuild 'file_save_test.exe'
@@ -101,6 +106,8 @@ if ($Test) {
         Get-Content -LiteralPath $taskReports[0].FullName
         & (Join-Path $taskBuild 'clipboard_test.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Isolated clipboard test failed.' }
+        & (Join-Path $taskBuild 'clipboard_history_test.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Clipboard history test failed.' }
         & (Join-Path $taskBuild 'autocopy_test.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Isolated auto copy test failed.' }
         & (Join-Path $taskBuild 'file_save_test.exe')

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "builtAtUtc": "2026-10-16T20:28:32Z",
-  "sourceBaseCommit": "1c7a2a20197b5439ca2c6912d62afc340f873bc8",
+  "builtAtUtc": "2026-10-27T19:43:44Z",
+  "sourceBaseCommit": "4a68b8a58005c29ae664e9353058163026da0515",
   "workingTreeHasUncommittedChanges": true,
   "compilerVersion": [
     "clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)",
@@ -47,6 +47,7 @@
     "<repo>\\src\\color_picker.cpp",
     "<repo>\\src\\capture.cpp",
     "<repo>\\src\\clipboard.cpp",
+    "<repo>\\src\\clipboard_history_popup.cpp",
     "<repo>\\src\\file_io.cpp",
     "<repo>\\src\\test_reports.cpp",
     "<repo>\\src\\ocr.cpp",
@@ -79,16 +80,16 @@
   "powershellVersion": "7.6.5",
   "output": {
     "name": "Tiger Snip.exe",
-    "sha256": "F7DFF316EBE903AAC45A459F740B99A665EE3BFBB5DD5E60977425FE3A28EC93"
+    "sha256": "C9195829BF9E782D184BC0AC8CAC07F1B5CF3310245DA347DC3DEFA7797ED7E9"
   },
   "inputs": [
     {
       "path": "build.ps1",
-      "sha256": "B6896273030BF228E55E979D7528E7D83EACF5EAE8053227C4744A1DD4C40B5E"
+      "sha256": "157796EC56B441D3E41C525B4A9B2DD3CDB74C4889127485927619AB9A8CFA90"
     },
     {
       "path": "CMakeLists.txt",
-      "sha256": "AD937F55DCE5196F9CCD892E902FAB5641F8E5822AF0560B534C80D1EBB66F18"
+      "sha256": "EE73F38CA7DDF52B62C4A74851236522D9EDCFE2C83C4896936B0470208D1245"
     },
     {
       "path": "package.ps1",
@@ -167,12 +168,20 @@
       "sha256": "93BD7968D26B660418281BBA06286E7E5F83E2FCB4E218F7908EF5279C062E24"
     },
     {
+      "path": "src\\clipboard_history_popup.cpp",
+      "sha256": "EA3219EBAA5F71AFE5C8902C39D26C13BCC7AC9CC274CD897BC31E0A3483824C"
+    },
+    {
+      "path": "src\\clipboard_history_popup.h",
+      "sha256": "1E6FE6C8DA8130330F9F7CC5E4B92453C71C3A6DBD0A9369C765BD58B72A5895"
+    },
+    {
       "path": "src\\clipboard.cpp",
-      "sha256": "7D8DA7DAC1A22CCDB7DE9B5055AD6635CF848E2CB11CE58986AD33F52C7C498C"
+      "sha256": "572CDD1C584F4BDFFDFC997FB2BDD16FF0656612A2681332DECFB28598454ABC"
     },
     {
       "path": "src\\clipboard.h",
-      "sha256": "525732D26C9050065718BD1D356C80F02F984C40935C1BBEEE7086856FA930C8"
+      "sha256": "0651EE1D925DEA2547B11875D4318812071F65D01E9A2D302F4ADDACB43FD597"
     },
     {
       "path": "src\\color_picker.cpp",
@@ -188,11 +197,11 @@
     },
     {
       "path": "src\\editor_chrome.h",
-      "sha256": "32E64F9D099E66536974BDB8897B7F22DAFFD6F38CA3F02E20BE478542089933"
+      "sha256": "F6DDDB6F83039ECF4F11AC3DE93443028317378F691289F4DC0329FDD409E366"
     },
     {
       "path": "src\\editor_classic_chrome.h",
-      "sha256": "E9EE10BAD1A2797C2ED156CC1267BCCC4D6233F933096549C6EF8F0783B923C9"
+      "sha256": "1D3827DF42E1B93C02B66E950BF1DB7F00CC8A86792A92FEB21680D2F28F870A"
     },
     {
       "path": "src\\editor_classic_layout.h",
@@ -208,7 +217,7 @@
     },
     {
       "path": "src\\editor_settings_layout.h",
-      "sha256": "C0B47CA9CE7B257B203FCA6FC5664EB38B70BE62C4AF021F7B114661A2F86483"
+      "sha256": "7EF2A1C5697E70F81E95E9886F77924764B19119F65463B643212EE2C889A279"
     },
     {
       "path": "src\\editor_theme.h",
@@ -232,7 +241,7 @@
     },
     {
       "path": "src\\main.cpp",
-      "sha256": "36BB5BD77E1A9C35BEA53DCC24600D34C69AB72D861B6024D0D9BB21DE695EB1"
+      "sha256": "832BE7B8B2D96C9DA6D9399B1E6389F9980284C372EAE41B64A08E026C6CC5BC"
     },
     {
       "path": "src\\model.cpp",
@@ -297,6 +306,10 @@
     {
       "path": "tests\\autocopy.cpp",
       "sha256": "54B4E63F1B6604F0CBCABEAE567D51247925FDDFE50FB9E726A11113B315B217"
+    },
+    {
+      "path": "tests\\clipboard_history.cpp",
+      "sha256": "4F0D2F42A4D9C3ED01CAA651B33645AD206FAE6E3CDA16E95FA31600F5C447D7"
     },
     {
       "path": "tests\\clipboard.cpp",
@@ -424,7 +437,7 @@
     },
     {
       "path": "tests\\ui.cpp",
-      "sha256": "90C952E8B0773EB61A8BDDDCA20982D4B58D1E1E4C8DF9A4F76E0482FAB9D614"
+      "sha256": "2355F3AC56229596DEE892FADB714C5022FD5808CAF1C584D592309A221D6BEB"
     }
   ]
 }

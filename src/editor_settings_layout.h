@@ -1,6 +1,6 @@
 // Settings are an editor overlay. Its controls share the existing command handlers.
 constexpr std::array<const wchar_t *, 6> SettingsPages = {
-    L"Appearance", L"General", L"Capture", L"Saving & Export", L"View", L"About"};
+    L"Appearance", L"General", L"Keybinds", L"Saving & Export", L"View", L"About"};
 enum class SettingsControlKind
 {
     Navigation,
@@ -134,6 +134,12 @@ SettingsPanelLayout settingsPanelLayout()
             app.settingsRecording == SettingsTextKey
                 ? L"Press a shortcut \u00B7 Esc cancels \u00B7 Backspace disables"
                 : hotkeyName(app.textHotkey),
+            64);
+        row(SettingsHistoryKey, SettingsControlKind::Button, L"Open clipboard history",
+            app.settingsRecording == SettingsHistoryKey
+                ? L"Press a shortcut \u00B7 Esc cancels \u00B7 Backspace disables"
+                : hotkeyName(app.historyHotkey) +
+                    (LOBYTE(app.historyHotkey) && !app.historyHotkeyRegistered ? L" (unavailable)" : L""),
             64);
         row(0, SettingsControlKind::Text, L"Click a shortcut to change it.",
             L"Use a single key or Ctrl/Alt/Shift/Win + key. Global shortcuts override "
