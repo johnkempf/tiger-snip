@@ -38,7 +38,7 @@ constexpr UINT TrayMessage = WM_APP + 20, LaunchMessage = WM_APP + 21;
 constexpr UINT HistoryCopyMessage = WM_APP + 22, HistoryClearMessage = WM_APP + 23;
 constexpr UINT CaptureTimer = 1, StatusTimer = 2, SmokeTimer = 3, CopyFlashTimer = 4,
                SizeRepeatTimer = 5, TraceHeartbeatTimer = 6, TextRecognitionTimer = 7,
-               ClipboardHistoryTimer = 8;
+               ClipboardHistoryTimer = 8, EditedCopyTimer = 9;
 constexpr UINT SizeRepeatDelay = 300, SizeRepeatInterval = 35;
 constexpr ULONGLONG CopyPulseDuration = 500, CopyNoticeDuration = 1400;
 constexpr float StatusHeight = 32;
@@ -269,7 +269,7 @@ struct Application
     Point cropEnd;
     Bitmap pickerImage;
     bool pickingColor = false;
-    HCURSOR penCursor = nullptr, eraserCursor = nullptr;
+    HCURSOR penCursor = nullptr, eraserCursor = nullptr, captureCursor = nullptr;
     float eraserCursorDpi = 0;
     HCURSOR grabCursor[2] = {};
     float grabCursorDpi = 0;
@@ -321,6 +321,9 @@ struct Application
     bool toolPreferencesDirty = false, shortcutsDirty = false, rendererPreferencesDirty = false;
     std::string preferenceError;
     bool autoCopy = true, keepAnnotationToolActive = false;
+    bool editedCopyPending = false;
+    DWORD editedCopySequence = 0;
+    unsigned editedCopyAttempts = 0;
     bool exportPreferencesDirty = false;
     ULONGLONG copyFlashStarted = 0, copyNoticeStarted = 0;
     unsigned collapsedRows = 0;
@@ -444,6 +447,15 @@ void syncTextEditor();
 void beginTextEditing(Point point, int existing = -1);
 void selectTool(Tool tool);
 void finishPropertySlider(bool cancel = false);
+void scheduleEditedCopy();
+void cancelEditedCopy();
+void commitDocumentEdit()
+{
+    const bool edited = app.document.editing();
+    app.document.commit();
+    if (edited)
+        scheduleEditedCopy();
+}
 void updateMenus();
 void closeSettingsPanel();
 void buildButtons();
@@ -1090,6 +1102,7 @@ void releaseImage()
     app.copyFlashStarted = 0;
     app.copyNoticeStarted = 0;
     finishTextEditing(true);
+    cancelEditedCopy();
     app.pickingColor = false;
     app.pickerImage = {};
     app.document.clear();
@@ -1412,6 +1425,39 @@ HCURSOR alphaCursor(const Bitmap &pixels, DWORD hotspotX, DWORD hotspotY)
     if (mask)
         DeleteObject(mask);
     return cursor;
+}
+Bitmap captureCursorPixels()
+{
+    // Physical pixels keep the tips precise even on a scaled display. The
+    // 3x3 clear center exposes the target pixel at the exact native hotspot.
+    constexpr int center = 20;
+    auto pixels = Bitmap::create(41, 41);
+    for (int y = 0; y < pixels.height; ++y)
+        for (int x = 0; x < pixels.width; ++x)
+        {
+            const int dx = std::abs(x - center), dy = std::abs(y - center);
+            const int along = std::max(dx, dy), across = std::min(dx, dy);
+            const int halfWidth = along < 7 ? 0 : along < 13 ? 1 : 2;
+            if (along < 2 || along > 18 || across > halfWidth)
+                continue;
+            const bool outline = halfWidth ? across == halfWidth || along == 18 : along == 2;
+            const size_t offset = (static_cast<size_t>(y) * pixels.width + x) * 4;
+            for (int channel = 0; channel < 3; ++channel)
+                pixels.pixels[offset + channel] = outline ? 24 : 255;
+            pixels.pixels[offset + 3] = 255;
+        }
+    return pixels;
+}
+HCURSOR currentCaptureCursor()
+{
+    if (!app.captureCursor)
+    {
+        const auto pixels = captureCursorPixels();
+        app.captureCursor = alphaCursor(pixels, pixels.width / 2, pixels.height / 2);
+        if (!app.captureCursor)
+            throwWindowsError("Cannot create the precision capture cursor.");
+    }
+    return app.captureCursor;
 }
 HCURSOR currentPenCursor()
 {
@@ -3322,7 +3368,7 @@ void finishTextEditing(bool cancel, bool selectAfter)
                 app.document.items.erase(app.document.items.begin() + index);
                 app.document.selected = -1;
             }
-            app.document.commit();
+            commitDocumentEdit();
             app.dirty = true;
             updateTitle();
         }
@@ -3406,7 +3452,7 @@ void changeTextFormatting(float size, bool bold, bool boxed)
         if (!app.textEdit)
         {
             if (!app.sizeRepeatCommand && !app.sliderDrag)
-                app.document.commit();
+                commitDocumentEdit();
             app.dirty = true;
             updateTitle();
         }
@@ -3433,7 +3479,7 @@ void changeTextAlignment(TextAlignment alignment)
             app.graphics.measureText(item);
             if (!app.textEdit)
             {
-                app.document.commit();
+                commitDocumentEdit();
                 app.dirty = true;
                 updateTitle();
             }
@@ -3464,7 +3510,7 @@ void changeColor(Color value)
         app.document.items[app.document.selected].color = value;
         if (!app.textEdit)
         {
-            app.document.commit();
+            commitDocumentEdit();
             app.dirty = true;
             updateTitle();
         }
@@ -3608,7 +3654,7 @@ void changeThickness(int delta)
         app.document.begin();
         app.document.items[app.document.selected].thickness = value;
         if (!app.sizeRepeatCommand && !app.sliderDrag)
-            app.document.commit();
+            commitDocumentEdit();
         app.dirty = true;
         updateTitle();
     }
@@ -3634,7 +3680,7 @@ void setPropertyValue(int id, float value)
         app.document.begin();
         app.document.items[app.document.selected].opacity = opacity;
         if (!app.sliderDrag)
-            app.document.commit();
+            commitDocumentEdit();
         app.dirty = true;
         updateTitle();
     }
@@ -3689,7 +3735,7 @@ void finishPropertySlider(bool cancel)
             app.dirty = app.sliderDocumentDirtyBefore;
         }
         else
-            app.document.commit();
+            commitDocumentEdit();
     }
     else if (cancel && app.textEdit)
         setPropertyValue(id, app.sliderBefore);
@@ -3720,7 +3766,7 @@ void stopSizeRepeat()
     app.sizeRepeatCommand = 0;
     app.sizeRepeated = false;
     if (app.sizeRepeatUndo)
-        app.document.commit();
+        commitDocumentEdit();
     app.sizeRepeatUndo = false;
 }
 void repeatSize()
@@ -3808,7 +3854,7 @@ void finishDrag(bool cancel = false)
         }
         else
         {
-            app.document.commit();
+            commitDocumentEdit();
             app.dirty = true;
             updateTitle();
         }
@@ -3854,7 +3900,7 @@ void applyCrop(Rect r)
     for (auto &item : app.document.items)
         item.move({-static_cast<float>(left), -static_cast<float>(top)});
     app.document.selected = -1;
-    app.document.commit();
+    commitDocumentEdit();
     if (app.cropSource.empty())
         app.cropSource = std::move(app.image);
     app.image = std::move(cropped);
@@ -3910,7 +3956,7 @@ void liftSelection(Rect r)
     }
     app.document.items.push_back(std::move(source));
     app.document.items.push_back(std::move(piece));
-    app.document.commit();
+    commitDocumentEdit();
     selectTool(Tool::Select);
     app.document.selected = static_cast<int>(app.document.items.size()) - 1;
     app.dirty = true;
@@ -3945,7 +3991,7 @@ void pasteClipboardImage()
         if (item->kind == Tool::Text) app.graphics.measureText(*item);
         app.document.begin();
         app.document.items.push_back(std::move(*item));
-        app.document.commit();
+        commitDocumentEdit();
         ++app.annotationPasteCount;
         selectTool(Tool::Select);
         app.document.selected = static_cast<int>(app.document.items.size()) - 1;
@@ -3978,13 +4024,22 @@ void pasteClipboardImage()
     auto piece = rasterPiece(std::move(*pixels), {a.x, a.y, a.x + width, a.y + height});
     app.document.begin();
     app.document.items.push_back(std::move(piece));
-    app.document.commit();
+    commitDocumentEdit();
     selectTool(Tool::Select);
     app.document.selected = static_cast<int>(app.document.items.size()) - 1;
     app.dirty = true;
     updateTitle();
     repaint();
     status(L"Image pasted - drag to move, drag handles to resize; hold Shift to keep its proportions");
+}
+void clearAnnotationSelection()
+{
+    if (!selected() && !app.textEdit)
+        return;
+    finishTextEditing();
+    app.document.selected = -1;
+    buildButtons();
+    repaint();
 }
 void mouseDown(LPARAM lp, bool middle = false)
 {
@@ -4080,12 +4135,15 @@ void mouseDown(LPARAM lp, bool middle = false)
     }
     if (app.textEdit && !app.pickingColor && !middle && !app.spaceDown)
     {
-        finishTextEditing();
-        // Clicking away commits once and leaves the finished annotation selected.
+        clearAnnotationSelection();
+        // Clicking away commits the text and returns Ctrl+C to the full snip.
         return;
     }
     if (!hasImage() || !canvasRect().contains(screen))
+    {
+        clearAnnotationSelection();
         return;
+    }
     if (middle || app.spaceDown || handPanAt(screen))
     {
         updateView();
@@ -4433,10 +4491,12 @@ void startCopyFeedback(bool pulseImage = true)
         app.copyFlashStarted = app.copyNoticeStarted = 0; // Copy succeeded; omit optional feedback.
     repaint();
 }
-void copyImage(bool automatic = false)
+bool copyImage(bool automatic = false)
 {
+    if (!automatic)
+        cancelEditedCopy();
     if (!hasImage())
-        return;
+        return false;
     const auto &bitmap = previewImage();
     auto png = app.graphics.png(bitmap);
     ClipboardFailure failure;
@@ -4448,17 +4508,64 @@ void copyImage(bool automatic = false)
             status(L"Could not auto copy. Press Ctrl+C to retry.");
         else
             error(app.window, windowsError(failure.operation, failure.code).c_str());
-        return;
+        return false;
     }
     app.dirty = false;
     updateTitle();
     if (!automatic)
         startCopyFeedback();
-    status(automatic ? L"Copied automatically - ready to paste; Ctrl+C copies your edits"
+    status(automatic ? L"Copied automatically - ready to paste"
                      : L"Copied image and annotations - ready to paste");
+    return true;
+}
+void cancelEditedCopy()
+{
+    KillTimer(app.window, EditedCopyTimer);
+    app.editedCopyPending = false;
+    app.editedCopyAttempts = 0;
+}
+void scheduleEditedCopy()
+{
+    if (!app.autoCopy || app.smoke || app.resizeTest || app.exiting || !hasImage() ||
+        app.capturePending || app.overlay)
+        return;
+    app.editedCopySequence = GetClipboardSequenceNumber();
+    app.editedCopyAttempts = 0;
+    app.editedCopyPending = SetTimer(app.window, EditedCopyTimer, 75, nullptr) != 0;
+    if (!app.editedCopyPending)
+        status(L"Could not auto copy. Use the Copy button to copy the full image.");
+}
+void copyCompletedEdit()
+{
+    if (!app.editedCopyPending || !app.autoCopy || app.smoke || app.resizeTest ||
+        app.exiting || !hasImage() || app.capturePending || app.overlay ||
+        GetClipboardSequenceNumber() != app.editedCopySequence)
+    {
+        cancelEditedCopy();
+        return;
+    }
+    // A new gesture may have started before this timer ran. Never publish a
+    // partially drawn shape, a slider preview, or uncommitted text.
+    if (app.document.editing() || app.drag != Drag::None || app.sliderDrag || app.textEdit)
+        return;
+    try
+    {
+        if (copyImage(true))
+        {
+            cancelEditedCopy();
+            return;
+        }
+    }
+    catch (const std::exception &)
+    {
+        status(L"Could not auto copy. Use the Copy button to retry.");
+    }
+    if (++app.editedCopyAttempts >= 10)
+        cancelEditedCopy();
 }
 void copySelectedAnnotation()
 {
+    cancelEditedCopy();
     if (!hasImage()) return;
     if (!selected())
     {
@@ -4482,6 +4589,7 @@ void copySelectedAnnotation()
 }
 void copyRecentSnip(int index)
 {
+    cancelEditedCopy();
     if (index < 0 || index >= static_cast<int>(app.recent.size()) || app.capturePending || app.overlay)
         return;
     if (index == app.activeRecent)
@@ -5253,7 +5361,7 @@ void command(int id, bool editSelectedStyle)
                 {
                     item.opacity = 1;
                 }
-                app.document.commit();
+                commitDocumentEdit();
                 app.dirty = true;
                 updateTitle();
             }
@@ -5509,8 +5617,10 @@ void command(int id, bool editSelectedStyle)
     case AutoCopy:
         commitPreferences(app.iniPath, {{L"Settings", L"AutoCopy", app.autoCopy ? L"0" : L"1"}});
         app.autoCopy = !app.autoCopy;
-        status(app.autoCopy ? L"Auto copy enabled for new snips"
-                            : L"Auto copy disabled - use Copy or Ctrl+C");
+        if (!app.autoCopy)
+            cancelEditedCopy();
+        status(app.autoCopy ? L"Auto copy enabled for new snips and completed edits"
+                            : L"Auto copy disabled - use the Copy button for the full image");
         break;
     case Save:
         saveImage();
@@ -5522,6 +5632,7 @@ void command(int id, bool editSelectedStyle)
         if (app.document.undo())
         {
             syncCroppedImage();
+            scheduleEditedCopy();
             app.dirty = true;
             updateTitle();
             repaint();
@@ -5531,6 +5642,7 @@ void command(int id, bool editSelectedStyle)
         if (app.document.redo())
         {
             syncCroppedImage();
+            scheduleEditedCopy();
             app.dirty = true;
             updateTitle();
             repaint();
@@ -5542,7 +5654,7 @@ void command(int id, bool editSelectedStyle)
             app.document.begin();
             app.document.items.erase(app.document.items.begin() + app.document.selected);
             app.document.selected = -1;
-            app.document.commit();
+            commitDocumentEdit();
             app.dirty = true;
             updateTitle();
             repaint();
@@ -5553,7 +5665,7 @@ void command(int id, bool editSelectedStyle)
         {
             app.document.begin();
             app.document.items[app.document.selected].flipCurvedArrow();
-            app.document.commit();
+            commitDocumentEdit();
             app.dirty = true;
             updateTitle();
             repaint();
@@ -5565,7 +5677,7 @@ void command(int id, bool editSelectedStyle)
             app.document.begin();
             app.document.items.clear();
             app.document.selected = -1;
-            app.document.commit();
+            commitDocumentEdit();
             app.dirty = true;
             updateTitle();
             repaint();
@@ -5803,6 +5915,7 @@ void completeTextRecognition()
 }
 void beginTextRecognition(Bitmap image)
 {
+    cancelEditedCopy();
     // One job at a time prevents an older recognition result replacing a newer copy.
     if (app.textResult.valid())
         return;
@@ -5922,6 +6035,7 @@ void startSnip(bool instant, bool allMonitors, bool textCapture)
     if (app.overlay || app.capturePending || app.settingsWindow || app.themePickerOpen ||
         app.textResult.valid())
         return;
+    cancelEditedCopy();
     app.textNotice.close();
     app.textCapture = textCapture;
     if (textCapture)
@@ -5991,6 +6105,7 @@ void openOverlay()
                  SWP_SHOWWINDOW);
     SetForegroundWindow(app.overlay);
     SetFocus(app.overlay);
+    SetCursor(currentCaptureCursor());
     app.capturePending = false;
 }
 POINT overlayPoint()
@@ -6034,6 +6149,46 @@ void finishCapture()
     }
     acceptCapture(std::move(captured));
 }
+RECT drawCaptureLabel(HDC dc, const std::wstring &label, POINT preferred, RECT bounds, UINT dpi)
+{
+    if (bounds.right <= bounds.left || bounds.bottom <= bounds.top)
+        return {};
+    const int saved = SaveDC(dc);
+    if (!saved)
+        throwWindowsError("Cannot prepare the capture hint.");
+    HFONT font = CreateFontW(-MulDiv(13, dpi, 96), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+    struct Restore
+    {
+        HDC dc; int saved; HFONT font;
+        ~Restore() { RestoreDC(dc, saved); if (font) DeleteObject(font); }
+    } restore{dc, saved, font};
+    if (!font)
+        throwWindowsError("Cannot create the capture hint font.");
+    SetMapMode(dc, MM_TEXT);
+    SelectObject(dc, font);
+    SIZE size{};
+    if (!GetTextExtentPoint32W(dc, label.c_str(), static_cast<int>(label.size()), &size))
+        throwWindowsError("Cannot measure the capture hint.");
+    const int paddingX = MulDiv(10, dpi, 96), paddingY = MulDiv(6, dpi, 96);
+    const LONG width = std::min(size.cx + 2 * paddingX, bounds.right - bounds.left);
+    const LONG height = std::min(size.cy + 2 * paddingY, bounds.bottom - bounds.top);
+    const LONG x = std::clamp(preferred.x, bounds.left, bounds.right - width);
+    const LONG y = std::clamp(preferred.y, bounds.top, bounds.bottom - height);
+    RECT box{x, y, x + width, y + height};
+    SetDCBrushColor(dc, RGB(15, 23, 42));
+    FillRect(dc, &box, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+    if (width <= 2 * paddingX || height <= 2 * paddingY)
+        return box;
+    RECT textBox{box.left + paddingX, box.top + paddingY,
+                 box.right - paddingX, box.bottom - paddingY};
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(255, 255, 255));
+    DrawTextW(dc, label.c_str(), static_cast<int>(label.size()), &textBox,
+              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    return box;
+}
 void paintOverlay(HWND hwnd)
 {
     PAINTSTRUCT paint{};
@@ -6053,6 +6208,19 @@ void paintOverlay(HWND hwnd)
     info.bmiHeader.biCompression = BI_RGB;
     SetDIBitsToDevice(memory, 0, 0, app.desktop.width, app.desktop.height, 0, 0, 0,
                       app.desktop.height, app.dimDesktop.pixels.data(), &info, DIB_RGB_COLORS);
+    const UINT dpi = GetDpiForWindow(hwnd);
+    RECT hintBounds{8, 8, app.desktop.width - 8, app.desktop.height - 8};
+    POINT screenCursor{};
+    GetCursorPos(&screenCursor);
+    MONITORINFO monitor{};
+    monitor.cbSize = sizeof(monitor);
+    if (GetMonitorInfoW(MonitorFromPoint(screenCursor, MONITOR_DEFAULTTONEAREST), &monitor))
+    {
+        hintBounds.left = std::max(hintBounds.left, monitor.rcMonitor.left - app.virtualX + 8);
+        hintBounds.top = std::max(hintBounds.top, monitor.rcMonitor.top - app.virtualY + 8);
+        hintBounds.right = std::min(hintBounds.right, monitor.rcMonitor.right - app.virtualX - 8);
+        hintBounds.bottom = std::min(hintBounds.bottom, monitor.rcMonitor.bottom - app.virtualY - 8);
+    }
     if (app.selecting)
     {
         auto r = selectionRect();
@@ -6077,36 +6245,18 @@ void paintOverlay(HWND hwnd)
                    app.textCapture ? L"Copy text: %ld x %ld | Esc to cancel"
                                    : L"%ld x %ld   |   Esc to cancel",
                    static_cast<long>(width), static_cast<long>(height));
-        int lx = std::clamp(static_cast<int>(r.left), 8, std::max(8, app.desktop.width - 300)),
-            ly = r.top >= 35 ? static_cast<int>(r.top) - 32
-                             : std::min(static_cast<int>(r.bottom) + 8, app.desktop.height - 30);
-        RECT box{lx, ly, lx + 280, ly + 26};
-        HBRUSH bg = CreateSolidBrush(RGB(15, 23, 42));
-        FillRect(memory, &box, bg);
-        DeleteObject(bg);
-        SetBkMode(memory, TRANSPARENT);
-        SetTextColor(memory, RGB(255, 255, 255));
-        SelectObject(memory, GetStockObject(DEFAULT_GUI_FONT));
-        DrawTextW(memory, label, -1, &box, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        const LONG labelHeight = MulDiv(32, dpi, 96);
+        const LONG y = r.top >= hintBounds.top + labelHeight ? r.top - labelHeight
+                                                           : r.bottom + 8;
+        drawCaptureLabel(memory, label, {r.left, y}, hintBounds, dpi);
     }
     else
     {
         POINT cursor = overlayPoint();
-        int x = std::clamp(static_cast<int>(cursor.x) + 20, 8,
-                           std::max(8, app.desktop.width - 340)),
-            y = std::clamp(static_cast<int>(cursor.y) + 24, 8,
-                           std::max(8, app.desktop.height - 44));
-        RECT box{x, y, x + 326, y + 34};
-        HBRUSH bg = CreateSolidBrush(RGB(15, 23, 42));
-        FillRect(memory, &box, bg);
-        DeleteObject(bg);
-        SetBkMode(memory, TRANSPARENT);
-        SetTextColor(memory, RGB(255, 255, 255));
-        SelectObject(memory, GetStockObject(DEFAULT_GUI_FONT));
-        DrawTextW(memory,
-                  app.textCapture ? L"Copy text: drag to select | Esc to cancel"
-                                  : L"Drag to select an area   |   Esc to cancel",
-                  -1, &box, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        drawCaptureLabel(memory,
+                         app.textCapture ? L"Drag to select text  |  Esc to cancel"
+                                         : L"Drag to select an area  |  Esc to cancel",
+                         {cursor.x + 24, cursor.y + 24}, hintBounds, dpi);
     }
     BitBlt(dc, paint.rcPaint.left, paint.rcPaint.top, paint.rcPaint.right - paint.rcPaint.left,
            paint.rcPaint.bottom - paint.rcPaint.top, memory, paint.rcPaint.left, paint.rcPaint.top,
@@ -6718,11 +6868,35 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
         if (app.drag != Drag::None)
             finishDrag(true);
         return 0;
-    case WM_ACTIVATE:
+    case WM_NCLBUTTONDOWN:
+    case WM_NCRBUTTONDOWN:
+    case WM_NCMBUTTONDOWN:
+    case WM_NCLBUTTONDBLCLK:
+        // The title bar/frame is outside the custom client-area mouse handler.
+        // Keep native menus usable for selected-annotation commands.
+        if (wp != HTMENU)
+        {
+            finishPropertySlider(true);
+            finishDrag(true);
+            clearAnnotationSelection();
+        }
+        break;
+    case WM_ACTIVATE: {
         if (LOWORD(wp) != WA_INACTIVE)
             break;
         closeRecent();
-        [[fallthrough]];
+        DWORD nextProcess = 0;
+        if (lp)
+            GetWindowThreadProcessId(reinterpret_cast<HWND>(lp), &nextProcess);
+        // Owned property dialogs and same-process popups still edit the selection.
+        if (IsWindowEnabled(hwnd) && nextProcess != GetCurrentProcessId())
+        {
+            finishPropertySlider(true);
+            finishDrag(true);
+            clearAnnotationSelection();
+        }
+    }
+    [[fallthrough]];
     case WM_CANCELMODE:
         finishPropertySlider(true);
         stopSizeRepeat();
@@ -6859,7 +7033,9 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
             showEditor();
         return 0;
     case WM_TIMER:
-        if (wp == ClipboardHistoryTimer)
+        if (wp == EditedCopyTimer)
+            copyCompletedEdit();
+        else if (wp == ClipboardHistoryTimer)
         {
             KillTimer(hwnd, ClipboardHistoryTimer);
             collectClipboardHistory();
@@ -6932,6 +7108,7 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
             saveToolPreferences();
         return 0;
     case WM_DESTROY:
+        cancelEditedCopy();
         if (app.historyListening)
             RemoveClipboardFormatListener(hwnd);
         app.historyListening = false;
@@ -6975,6 +7152,11 @@ LRESULT mainMessage(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
             SetCursor(LoadCursorW(nullptr, IDC_ARROW));
             DestroyCursor(app.eraserCursor);
             app.eraserCursor = nullptr;
+        }
+        if (app.captureCursor)
+        {
+            SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+            DestroyCursor(std::exchange(app.captureCursor, nullptr));
         }
         saveToolPreferences();
         cancelCapture(false);
@@ -7056,7 +7238,7 @@ LRESULT CALLBACK overlayProcedure(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
                     paintOverlay(hwnd);
                     return 0;
                 case WM_SETCURSOR:
-                    SetCursor(LoadCursorW(nullptr, IDC_CROSS));
+                    SetCursor(currentCaptureCursor());
                     return TRUE;
                 case WM_LBUTTONDOWN:
                     app.selectionStart = app.selectionEnd = selectionEventPoint(lp);
@@ -7323,7 +7505,7 @@ void registerClasses()
     cls.style = 0;
     cls.lpszClassName = OverlayClass;
     cls.lpfnWndProc = overlayProcedure;
-    cls.hCursor = LoadCursorW(nullptr, IDC_CROSS);
+    cls.hCursor = nullptr; // WM_SETCURSOR supplies the precision capture cursor.
     if (!RegisterClassExW(&cls))
         throwWindowsError("Cannot register capture window.");
     cls.lpszClassName = SettingsClass;

@@ -112,8 +112,8 @@ SettingsPanelLayout settingsPanelLayout()
             L"Compatibility mode for smoother updates on some PCs.");
         row(Startup, SettingsControlKind::Toggle, L"Run at sign-in",
             L"Keep Tiger Snip ready in the tray.");
-        row(AutoCopy, SettingsControlKind::Toggle, L"Auto copy new snips",
-            L"Image captures copy automatically. Text always copies with a preview.");
+        row(AutoCopy, SettingsControlKind::Toggle, L"Auto copy snips and edits",
+            L"Copy the full image after each capture or completed edit, even with an annotation selected.", 90);
         row(KeepAnnotationToolActive, SettingsControlKind::Toggle, L"Keep annotation tool active",
             L"Place more shapes, arrows, lines, checks, or text without switching back to Select.", 90);
         row(0, SettingsControlKind::Text, L"Preferences are saved for your Windows account.", L"",

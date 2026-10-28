@@ -44,6 +44,9 @@ from clipboard history by its source app are skipped. If **Ctrl+Alt+V** is alrea
 use, the icon still works and **Keybinds** shows that the shortcut is unavailable.
 
 Click **New snip** and drag a rectangle. **Ctrl+C** copies a selected annotation; **Ctrl+V** pastes an editable duplicate. With nothing selected, **Ctrl+C** copies the whole image. The toolbar **Copy** button always copies the whole image. Press **Ctrl+S** to save.
+Click empty space or the title bar to deselect an annotation and return **Ctrl+C** to
+copying the full snip. Moving/resizing the annotation and using its property controls
+keep it selected. Switching to another app clears the selection too.
 **Ctrl+S**, **Ctrl+Shift+S**, and the top-right **Save as** button always open the modern
 Windows save picker, even after you have saved the snip. It starts in your current
 **Preferences → Saving & Export → Save location**, so you can choose another folder for each copy.
@@ -59,6 +62,12 @@ canceled selections, and reopening or copying existing images do not add to the 
 The capture icon on the welcome screen also starts a snip. **Recent** keeps the last ten captures;
 Right-click the open snip or a Recent thumbnail for **Copy**, **Save**, and **Save As**.
 Recent actions include annotations and export effects without reopening the capture.
+
+**Preferences → General → Auto copy snips and edits** is on by default. Each completed
+annotation, move, resize, style change, crop, deletion, undo or redo updates the clipboard
+with the full current image, including when an annotation is selected. Drawing and text
+editing copy when the edit is committed. Explicitly copying an annotation or other content
+takes priority over a queued automatic copy. Turn the setting off to copy manually.
 
 **Ctrl+Alt+T** copies text from an area: drag over the text, release, then paste anywhere.
 Recognition runs locally using the built-in Windows OCR engine and your installed

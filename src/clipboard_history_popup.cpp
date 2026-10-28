@@ -49,8 +49,10 @@ void ClipboardHistoryPopup::show(HWND owner, const std::vector<std::wstring> &en
     monitor.cbSize = sizeof(monitor);
     if (!GetMonitorInfoW(MonitorFromPoint(anchor, MONITOR_DEFAULTTONEAREST), &monitor))
         throwWindowsError("Cannot position clipboard history.");
+    // Keep the picker independent of the editor's minimized state. owner_ is
+    // only the command recipient; Windows minimizes popups owned by the editor.
     window_ = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, PopupClass, L"Clipboard history",
-                              WS_POPUP, anchor.x, anchor.y, 1, 1, owner, nullptr, cls.hInstance, this);
+                              WS_POPUP, anchor.x, anchor.y, 1, 1, nullptr, nullptr, cls.hInstance, this);
     if (!window_) throwWindowsError("Cannot open clipboard history.");
     dpi_ = GetDpiForWindow(window_) / 96.0f;
     if (font_) DeleteObject(font_);

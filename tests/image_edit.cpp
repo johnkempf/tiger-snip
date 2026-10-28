@@ -307,6 +307,70 @@ int wmain()
                     app.document.items == std::vector<Annotation>{arrow} && app.document.selected == 0 &&
                     app.dirty && app.view.origin == copyView.origin && app.view.scale == copyView.scale,
                 "Ctrl+C did not copy only the annotation or changed the document.");
+        // Exercise the actual title-bar message without entering Windows' modal
+        // window-move loop on this noninteractive test desktop.
+        require(SetWindowSubclass(app.window,
+            [](HWND hwnd, UINT message, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) -> LRESULT {
+                if (message == WM_SYSCOMMAND && (wp & 0xfff0) == SC_MOVE) return 0;
+                return DefSubclassProc(hwnd, message, wp, lp);
+            }, 73, 0), "Cannot intercept the test window's system move.");
+        const auto selectionItems = app.document.items;
+        auto requireFullCopy = [&] {
+            require(!selected(), "Clicking outside the annotation retained its selection.");
+            shortcut('C');
+            const auto copied = readClipboardBitmap(app.window, app.graphics);
+            require(copied && copied->pixels == renderedExport().pixels &&
+                        !readClipboardAnnotation(app.window, app.graphics) &&
+                        app.document.items == selectionItems,
+                    "Click-away Ctrl+C did not copy the full snip or changed its annotations.");
+        };
+        for (int layout : {InterfaceClassic, InterfaceOrange})
+        {
+            command(layout);
+            app.document.selected = 0;
+            buildButtons();
+            SendMessageW(app.window, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+            requireFullCopy();
+            app.document.selected = 0;
+            buildButtons();
+            const auto client = clientDips();
+            const LPARAM blankHeader = MAKELPARAM(static_cast<int>(client.right * app.dpi / 2),
+                                                  static_cast<int>(2 * app.dpi));
+            mouseDown(blankHeader);
+            mouseUp(blankHeader);
+            requireFullCopy();
+            app.document.selected = 0;
+            buildButtons();
+            auto slider = std::find_if(app.buttons.begin(), app.buttons.end(), [](const Button &b) {
+                return b.command == StrokeSlider;
+            });
+            if (slider == app.buttons.end())
+                slider = std::find_if(app.buttons.begin(), app.buttons.end(), [](const Button &b) {
+                    return paletteCommand(b.command);
+                });
+            require(slider != app.buttons.end(), "Cannot find the selected arrow's property controls.");
+            const bool isSlider = slider->command == StrokeSlider;
+            const LPARAM property = MAKELPARAM(
+                static_cast<int>((slider->rect.left + slider->rect.right) * app.dpi / 2),
+                static_cast<int>((slider->rect.top + slider->rect.bottom) * app.dpi / 2));
+            mouseDown(property);
+            require(selected() && (isSlider ? app.sliderDrag == StrokeSlider : app.pressed != 0),
+                    "Clicking a property control deselected the arrow.");
+            if (isSlider)
+                finishPropertySlider(true);
+            else
+                SendMessageW(app.window, WM_CANCELMODE, 0, 0);
+            require(selected() && app.document.items == selectionItems,
+                    "Canceling a property edit changed the arrow or lost its selection.");
+            SendMessageW(app.window, WM_ACTIVATE, WA_INACTIVE,
+                         reinterpret_cast<LPARAM>(app.window));
+            require(selected(), "A same-process dialog activation cleared the selection.");
+            SendMessageW(app.window, WM_ACTIVATE, WA_INACTIVE, 0);
+            requireFullCopy();
+        }
+        app.document.selected = 0;
+        buildButtons();
+        shortcut('C');
         // The clipboard contains a snapshot, independent of subsequent source edits.
         app.document.items[0].color = rgb(200, 0, 0);
         shortcut('V');
@@ -487,7 +551,8 @@ int wmain()
         command(Exit);
         std::cout << "PASS: both Crop dropdowns; rectangular lifting including annotations, white source, "
                      "move/corner/side resize/cancel/undo/redo/crop/export at 100/150/200% DPI in both layouts; "
-                     "Ctrl+C selected editable annotations / whole image with no selection, toolbar whole-image copy, "
+                     "Ctrl+C selected editable annotations / whole image with no selection; title/header/external click-away "
+                     "with property/dialog selection retention in both layouts; toolbar whole-image copy, "
                      "transparent previews, editable paste/offset/undo/redo, all annotation types and Unicode text; "
                      "Ctrl+V PNG alpha, repeated paste, text-only no-op, DIBV5 alpha, bottom-up 24-bit DIB, "
                      "truncated DIB rejection and Explorer file paste. User clipboard untouched.\n";

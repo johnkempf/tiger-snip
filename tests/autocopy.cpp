@@ -570,6 +570,110 @@ int wmain()
         app.exportOptions = {};
         resetPreview();
         app.saveFolder.clear();
+        // Exercise completed edits through real pointer and command handlers.
+        // Every copy must contain the full export while leaving selection intact.
+        acceptCapture(image);
+        auto pointer = [&](Point imagePoint) {
+            updateView();
+            const auto screen = app.view.toScreen(imagePoint);
+            return MAKELPARAM(static_cast<int>(std::lround(screen.x * app.dpi)),
+                              static_cast<int>(std::lround(screen.y * app.dpi)));
+        };
+        auto flushEditCopy = [&] {
+            SendMessageW(app.window, WM_TIMER, EditedCopyTimer, 0);
+        };
+        auto drawArrow = [&] {
+            command(ArrowTool);
+            mouseDown(pointer({12, 12}));
+            mouseMove(pointer({70, 42}));
+            mouseUp(pointer({70, 42}));
+        };
+        const auto beforeDrawing = GetClipboardSequenceNumber();
+        command(ArrowTool);
+        mouseDown(pointer({12, 12}));
+        mouseMove(pointer({70, 42}));
+        flushEditCopy();
+        require(GetClipboardSequenceNumber() == beforeDrawing,
+                "An unfinished annotation was auto-copied.");
+        mouseUp(pointer({70, 42}));
+        require(app.editedCopyPending && selected(), "Completed annotation did not queue auto copy.");
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        require(selected() && !app.editedCopyPending && !app.copyFlashStarted,
+                "Edit auto copy changed selection or flashed the image.");
+        mouseDown(pointer({41, 27}));
+        mouseMove(pointer({45, 30}));
+        mouseUp(pointer({45, 30}));
+        require(app.editedCopyPending, "Moving an arrow did not queue auto copy.");
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        const auto endpoint = app.document.items[app.document.selected].b;
+        mouseDown(pointer(endpoint));
+        mouseMove(pointer(endpoint + Point{5, 3}));
+        mouseUp(pointer(endpoint + Point{5, 3}));
+        require(app.editedCopyPending, "Resizing an arrow did not queue auto copy.");
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        changeColor(rgb(240, 40, 80));
+        changeThickness(2);
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        command(Undo);
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        command(Redo);
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        app.document.selected = 0;
+        command(DeleteSelected);
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        command(Undo);
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        command(TextTool);
+        mouseDown(pointer({10, 45}));
+        require(app.textEdit, "Cannot create text for auto-copy test.");
+        SetWindowTextW(app.textEdit, L"Latest text");
+        const auto beforeTextCommit = GetClipboardSequenceNumber();
+        flushEditCopy();
+        require(GetClipboardSequenceNumber() == beforeTextCommit,
+                "Uncommitted text was auto-copied.");
+        finishTextEditing();
+        flushEditCopy();
+        clipboardMatches(renderedExport());
+        const auto beforeCancelEdit = GetClipboardSequenceNumber();
+        command(ArrowTool);
+        mouseDown(pointer({20, 20}));
+        mouseMove(pointer({60, 30}));
+        finishDrag(true);
+        flushEditCopy();
+        require(GetClipboardSequenceNumber() == beforeCancelEdit,
+                "Canceling an edit changed the clipboard.");
+        command(AutoCopy);
+        drawArrow();
+        flushEditCopy();
+        require(GetClipboardSequenceNumber() == beforeCancelEdit && !app.editedCopyPending,
+                "Disabled auto copy published an annotation edit.");
+        command(AutoCopy);
+        changeColor(rgb(30, 180, 80));
+        require(app.editedCopyPending, "Re-enabled auto copy did not queue an edit.");
+        require(copyText(app.window, L"Newer external copy"), "Cannot simulate a newer clipboard.");
+        flushEditCopy();
+        std::wstring newerText;
+        require(!app.editedCopyPending && readClipboardHistoryText(app.window, newerText) &&
+                    newerText == L"Newer external copy",
+                "A delayed edit copy overwrote newer clipboard content.");
+        changeColor(rgb(60, 100, 230));
+        copySelectedAnnotation();
+        const auto manualSequence = GetClipboardSequenceNumber();
+        flushEditCopy();
+        require(GetClipboardSequenceNumber() == manualSequence &&
+                    readClipboardAnnotation(app.window, app.graphics).has_value(),
+                "Auto copy replaced an explicitly copied editable annotation.");
+        applyCrop({2, 3, 85, 58});
+        flushEditCopy();
+        clipboardMatches(renderedExport());
         // Another thread owns the clipboard so both automatic and manual failure paths run.
         const auto held = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         const auto release = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -598,6 +702,10 @@ int wmain()
             copyRecentSnip(0);
             require(app.status.find(L"Clipboard is busy") == 0 && !app.copyNoticeStarted,
                     "Failed Recent copy showed a success confirmation.");
+            drawArrow();
+            flushEditCopy();
+            require(app.editedCopyPending && app.editedCopyAttempts == 1,
+                    "A busy clipboard did not retain the pending edit for retry.");
         }
         catch (...)
         {
@@ -612,6 +720,9 @@ int wmain()
         CloseHandle(held);
         CloseHandle(release);
         require(failureHandled, "Busy clipboard must retain the new snip and avoid a false flash.");
+        flushEditCopy();
+        require(!app.editedCopyPending, "Successful edit retry did not clear its timer.");
+        clipboardMatches(renderedExport());
         command(Copy);
         clipboardMatches(renderedExport());
         require(!IsWindowVisible(app.window) || app.copyFlashStarted,
@@ -636,7 +747,8 @@ int wmain()
         std::cout << "PASS: default-on auto copy, Preferences toggle, persisted OFF/ON, new and "
                      "selection "
                      "captures, PNG/DIB export, already-copied snip Ctrl+C and repeated copy, "
-                     "inert plain letters, annotations, disabled capture, "
+                     "inert plain letters, annotation add/move/resize/style/text/crop/delete/undo/redo auto copy; "
+                     "canceled/uncommitted/disabled edit isolation, newer/manual clipboard priority, edit retries, disabled capture, "
                      "right-click canvas Copy/Save and keyboard context menu, direct Recent "
                      "Copy/Save with annotations and export effects, live edit "
                      "retention, redirected existing saves across multiple configured folders, "

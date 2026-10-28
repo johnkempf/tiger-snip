@@ -177,6 +177,25 @@ int wmain()
         require(app.clipboardHistory.entries().front() == L"retry-after-busy", "Busy clipboard retry lost text.");
         const std::wstring exact = L"  PART-&123\r\n\u03A9\tsecond line  ";
         publish(exact);
+        // The global picker must stay usable while the editor is hidden or minimized.
+        for (int state : {SW_SHOW, SW_HIDE, SW_SHOWMINIMIZED})
+        {
+            ShowWindow(app.window, state);
+            SendMessageW(app.window, WM_HOTKEY, app.historyHotkeyId, 0);
+            const HWND picker = app.historyPopup.window();
+            RECT bounds{};
+            // Visibility is suppressed on this noninteractive desktop; the
+            // picker must still have its full geometry and not be iconic.
+            require(picker && !IsIconic(picker) &&
+                GetWindowRect(picker, &bounds) && bounds.right - bounds.left >= 400,
+                "Background history shortcut opened a minimized picker.");
+            require((state != SW_SHOWMINIMIZED || IsIconic(app.window)) &&
+                (state != SW_HIDE || !IsWindowVisible(app.window)),
+                "Opening history unexpectedly restored the editor.");
+            SendMessageW(picker, WM_KEYDOWN, VK_ESCAPE, 0);
+            require(!app.historyPopup.window(), "Background picker did not dismiss.");
+        }
+        ShowWindow(app.window, SW_HIDE);
         command(ClipboardHistory);
         require(IsWindow(app.historyPopup.window()), "The toolbar command did not open a picker.");
         // A copy while the picker is open must not change the meaning of its rows.
@@ -248,7 +267,7 @@ int wmain()
         require(app.clipboardHistory.entries().empty() && !app.historyListening && !app.historyPopup.window(),
             "Exit left history or its listener behind.");
         std::cout << "PASS: external clipboard listener; latest 20; deduplication; blanks/images/exclusions/size limit; "
-            "busy retry; stable picker rows; exact Unicode/multiline recopy; feedback; shortcut; keyboard scroll; "
+            "busy retry; stable picker rows; exact Unicode/multiline recopy; feedback; shortcut with visible/hidden/minimized editor; keyboard scroll; "
             "always-visible icon in both layouts; hover/clear highlight and stable repaint; "
             "Keybinds settings; four keybind conflicts/rollback/edit/disable/persistence; clear; Escape; Exit cleanup.\n";
     }

@@ -49,6 +49,11 @@ if ($Test) {
     $taskHistoryArguments[$taskHistoryArguments.IndexOf((Join-Path $taskBuild 'autocopy_test.exe'))] = Join-Path $taskBuild 'clipboard_history_test.exe'
     & $taskCompiler @taskHistoryArguments
     if ($LASTEXITCODE -ne 0) { throw 'Clipboard history test compilation failed.' }
+    $taskOverlayArguments = @($taskHistoryArguments)
+    $taskOverlayArguments[$taskOverlayArguments.IndexOf((Join-Path $taskRoot 'tests\clipboard_history.cpp'))] = Join-Path $taskRoot 'tests\capture_overlay.cpp'
+    $taskOverlayArguments[$taskOverlayArguments.IndexOf((Join-Path $taskBuild 'clipboard_history_test.exe'))] = Join-Path $taskBuild 'capture_overlay_test.exe'
+    & $taskCompiler @taskOverlayArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Capture overlay test compilation failed.' }
     $taskFileSaveArguments = @($taskClipboardArguments) + '-DTIGER_SNIP_TESTING'
     $taskFileSaveArguments[$taskFileSaveArguments.IndexOf((Join-Path $taskRoot 'tests\clipboard.cpp'))] = Join-Path $taskRoot 'tests\file_save.cpp'
     $taskFileSaveArguments[$taskFileSaveArguments.IndexOf((Join-Path $taskBuild 'clipboard_test.exe'))] = Join-Path $taskBuild 'file_save_test.exe'
@@ -108,6 +113,8 @@ if ($Test) {
         if ($LASTEXITCODE -ne 0) { throw 'Isolated clipboard test failed.' }
         & (Join-Path $taskBuild 'clipboard_history_test.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Clipboard history test failed.' }
+        & (Join-Path $taskBuild 'capture_overlay_test.exe')
+        if ($LASTEXITCODE -ne 0) { throw 'Capture overlay test failed.' }
         & (Join-Path $taskBuild 'autocopy_test.exe')
         if ($LASTEXITCODE -ne 0) { throw 'Isolated auto copy test failed.' }
         & (Join-Path $taskBuild 'file_save_test.exe')
