@@ -32,6 +32,29 @@ void driveCustomThemePicker(HWND window)
         require(!IsWindowEnabled(GetDlgItem(window, IDOK)), "Invalid custom UI hex was accepted.");
         SetDlgItemTextW(window, 11, colorHex(customThemePickerTest.chosen).c_str());
         require(IsWindowEnabled(GetDlgItem(window, IDOK)), "Valid custom UI hex was rejected.");
+        require(GetDlgItem(window, 19), "The screen eyedropper button is missing.");
+        for (UINT cancel : {WM_COMMAND, WM_RBUTTONDOWN, WM_CANCELMODE})
+        {
+            SendMessageW(window, WM_COMMAND, MAKEWPARAM(19, BN_CLICKED), 0);
+            require(GetCapture() == window, "The screen eyedropper did not capture desktop clicks.");
+            SendMessageW(window, WM_COMMAND, IDOK, 0);
+            require(IsWindow(window) && GetCapture() == window,
+                    "Enter applied the dialog during screen picking.");
+            // Simulate a live preview, then ensure every cancellation route restores the color.
+            SetDlgItemTextW(window, 11, L"#123456");
+            SendMessageW(window, cancel, cancel == WM_COMMAND ? IDCANCEL : 0, 0);
+            wchar_t restored[16]{};
+            GetDlgItemTextW(window, 11, restored, 16);
+            require(IsWindow(window) && GetCapture() != window &&
+                        std::wstring(restored) == colorHex(customThemePickerTest.chosen),
+                    "Cancelling screen picking did not restore the color and release the mouse.");
+        }
+        SendMessageW(window, WM_COMMAND, MAKEWPARAM(19, BN_CLICKED), 0);
+        SetDlgItemTextW(window, 11, L"#123456");
+        ReleaseCapture();
+        GetDlgItemTextW(window, 11, initial, 16);
+        require(std::wstring(initial) == colorHex(customThemePickerTest.chosen),
+                "Losing mouse capture did not cancel screen picking.");
         SendMessageW(window, WM_COMMAND, customThemePickerTest.cancel ? IDCANCEL : IDOK, 0);
     }
     catch (const std::exception &failure)

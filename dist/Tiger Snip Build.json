@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "builtAtUtc": "2026-10-28T15:24:28Z",
-  "sourceBaseCommit": "992857e7fafeee7795bc1b9d5260115eecf6b905",
+  "builtAtUtc": "2026-11-05T15:25:17Z",
+  "sourceBaseCommit": "efe0e6eda76f536a7e378c835ac9866b64da8310",
   "workingTreeHasUncommittedChanges": true,
   "compilerVersion": [
     "clang version 23.1.2 (https://github.com/llvm/llvm-project.git 85ac560262434c9ccfc0c183ec22d4138ed647fb)",
@@ -80,7 +80,7 @@
   "powershellVersion": "7.6.5",
   "output": {
     "name": "Tiger Snip.exe",
-    "sha256": "685608B097B65A93F9E6B930902F33031DB4573063474304BBF9B3DE6DF8F3D8"
+    "sha256": "7AC213368E49576CE1BA6328C2122B3385C7E07DD5AD4C65F6FAA0DEB54852C3"
   },
   "inputs": [
     {
@@ -109,7 +109,7 @@
     },
     {
       "path": "resources\\app.rc",
-      "sha256": "AB2955F6D737944EE4DE6B54633A2F500E2432A049FE42E5821AE089F345E397"
+      "sha256": "7FE9E0C05F3AC70D5BA4A9D157DF947454EE211CF8D47EB18D22F04433BE03AF"
     },
     {
       "path": "resources\\licenses\\LLVM.txt",
@@ -185,7 +185,7 @@
     },
     {
       "path": "src\\color_picker.cpp",
-      "sha256": "4D38D57DCDC77461CFFEF4C8244E9E25CE79A15FA2A407D8FD60E5A69E72C5A1"
+      "sha256": "DC1D67E5B36A9432C81F41A48DD8D64308147BDD6042C6876405AA162530212D"
     },
     {
       "path": "src\\color_picker.h",
@@ -241,7 +241,7 @@
     },
     {
       "path": "src\\main.cpp",
-      "sha256": "BAA3A38E05C0B3CE3F6F232307294AC5200D2D39A13A3B0351AE3A2062F81DF4"
+      "sha256": "82DACA9D033B32E7544A083FFB789303BD092E9284CEFE391974FDC2ECA13C58"
     },
     {
       "path": "src\\model.cpp",
@@ -437,11 +437,11 @@
     },
     {
       "path": "tests\\text_edit.cpp",
-      "sha256": "3F6D9037C0DFAF0EB1263FBC2A8C912EC081067760587642D5F54B36262D9524"
+      "sha256": "D46F3D34F3F7C3506DE8FA6922247267AF044B905D318BB88910405D0FBDF2BA"
     },
     {
       "path": "tests\\ui.cpp",
-      "sha256": "A3C2D32136E33A40DF9AA35843FD68E920E43BEACC5DAAF60FB876A8ACCA7C8E"
+      "sha256": "DE438341612BD92157D0F9DB9BCFABFBCDA28BBBC5762D0325DE104DA4122B59"
     }
   ]
 }

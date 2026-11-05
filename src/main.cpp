@@ -3402,6 +3402,12 @@ void beginTextEditing(Point point, int existing)
         item.textWidth =
             std::max(1.0f, std::min(600.0f, app.image.width - point.x - (item.boxed ? 24 : 0)));
         app.graphics.measureText(item);
+        // Place the first line around the click instead of entirely below it.
+        // Work in image coordinates so placement follows zoom and display scaling.
+        const float height = item.b.y - item.a.y;
+        item.a.y = std::clamp(point.y - height / 2, 0.0f,
+                              std::max(0.0f, app.image.height - height));
+        item.b.y = item.a.y + height;
         app.document.items.push_back(std::move(item));
         existing = static_cast<int>(app.document.items.size()) - 1;
     }

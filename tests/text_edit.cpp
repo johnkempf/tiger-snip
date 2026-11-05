@@ -47,6 +47,34 @@ int wmain()
             }
         app.exportOptions = {};
         updateView();
+        const float initialFontSize = app.fontSize;
+        for (bool boxed : {false, true})
+            for (float size : {12.0f, 32.0f, 72.0f})
+            {
+                app.textBox = boxed;
+                app.fontSize = size;
+                for (float clickY : {0.0f, 300.0f, float(app.image.height)})
+                {
+                    beginTextEditing({200, clickY});
+                    const auto placed = app.document.items[app.document.selected];
+                    require(placed.a.x == 200 && placed.a.y >= 0 &&
+                                placed.b.y <= app.image.height &&
+                                (clickY != 300 || std::abs((placed.a.y + placed.b.y) / 2 - clickY) < .01f),
+                            "New text is not vertically centered at the click or kept inside the image.");
+                    SendMessageW(app.textEdit, WM_CHAR, L'A', 0);
+                    require(app.document.items[app.document.selected].a == placed.a,
+                            "Typing moved newly placed text away from the click.");
+                    finishTextEditing();
+                    const int index = app.document.selected;
+                    beginTextEditing({0, 0}, index);
+                    require(app.document.items[index].a == placed.a,
+                            "Reopening existing text changed its placement.");
+                    finishTextEditing(true);
+                    app.document.clear();
+                }
+            }
+        app.fontSize = initialFontSize;
+        resetPreview();
         auto verify = [&](const std::wstring &name) {
             std::cout << "Checking " << std::string(name.begin(), name.end()) << "\n";
             const auto expected = app.graphics.exportImage(

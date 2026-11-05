@@ -82,6 +82,8 @@ struct ColorPicker
 {
     Color value;
     bool editing = false, syncing = false;
+    bool sampling = false;
+    Color beforeSampling = 0;
     const wchar_t *title = nullptr, *action = nullptr;
     float hue = 0, saturation = 0, brightness = 0;
     std::vector<uint32_t> spectrum;
@@ -121,6 +123,38 @@ struct ColorPicker
         InvalidateRect(GetDlgItem(window, 10), nullptr, FALSE);
         InvalidateRect(GetDlgItem(window, 17), nullptr, FALSE);
         syncing = false;
+    }
+    void stopSampling(HWND window, bool accept)
+    {
+        if (!sampling)
+            return;
+        sampling = false;
+        if (GetCapture() == window)
+            ReleaseCapture();
+        SetCursor(LoadCursorW(nullptr, IDC_ARROW));
+        if (!accept)
+            value = beforeSampling;
+        toSpectrum();
+        sync(window);
+        SetFocus(GetDlgItem(window, 19));
+    }
+    bool sampleScreen(HWND window)
+    {
+        POINT point{};
+        if (!GetCursorPos(&point))
+            return false;
+        HDC screen = GetDC(nullptr);
+        if (!screen)
+            return false;
+        const COLORREF pixel = GetPixel(screen, point.x, point.y);
+        ReleaseDC(nullptr, screen);
+        if (pixel == CLR_INVALID)
+            return false;
+        value = pixel;
+        toSpectrum();
+        sync(window);
+        SetDlgItemTextW(window, 16, L"Click to pick. Esc or right-click to cancel.");
+        return true;
     }
 };
 LRESULT CALLBACK spectrumProcedure(HWND hwnd, UINT message, WPARAM wp, LPARAM lp, UINT_PTR,
@@ -211,6 +245,44 @@ INT_PTR CALLBACK colorPickerProcedure(HWND window, UINT message, WPARAM wp, LPAR
                 return FALSE;
             switch (message)
             {
+            case WM_SETCURSOR:
+                if (picker->sampling)
+                {
+                    SetCursor(LoadCursorW(nullptr, IDC_CROSS));
+                    return TRUE;
+                }
+                break;
+            case WM_MOUSEMOVE:
+                if (picker->sampling)
+                {
+                    picker->sampleScreen(window);
+                    return TRUE;
+                }
+                break;
+            case WM_LBUTTONDOWN:
+                if (picker->sampling)
+                {
+                    if (picker->sampleScreen(window))
+                        picker->stopSampling(window, true);
+                    else
+                        SetDlgItemTextW(window, 16, L"Cannot read this pixel. Try another location.");
+                    return TRUE;
+                }
+                break;
+            case WM_RBUTTONDOWN:
+                if (picker->sampling)
+                {
+                    picker->stopSampling(window, false);
+                    return TRUE;
+                }
+                break;
+            case WM_CAPTURECHANGED:
+            case WM_CANCELMODE:
+                picker->stopSampling(window, false);
+                break;
+            case WM_DESTROY:
+                picker->stopSampling(window, false);
+                break;
             case WM_TIMER:
                 if (picker->test)
                 {
@@ -219,13 +291,36 @@ INT_PTR CALLBACK colorPickerProcedure(HWND window, UINT message, WPARAM wp, LPAR
                 }
                 return TRUE;
             case WM_COMMAND:
+                if (LOWORD(wp) == 19)
+                {
+                    picker->beforeSampling = picker->value;
+                    picker->sampling = true;
+                    SetFocus(window);
+                    SetCapture(window);
+                    if (GetCapture() != window)
+                    {
+                        picker->stopSampling(window, false);
+                        SetDlgItemTextW(window, 16, L"Cannot start the screen picker. Please try again.");
+                        return TRUE;
+                    }
+                    SetCursor(LoadCursorW(nullptr, IDC_CROSS));
+                    SetDlgItemTextW(window, 16, L"Click to pick. Esc or right-click to cancel.");
+                    return TRUE;
+                }
                 if (LOWORD(wp) == IDCANCEL)
                 {
+                    if (picker->sampling)
+                    {
+                        picker->stopSampling(window, false);
+                        return TRUE;
+                    }
                     EndDialog(window, IDCANCEL);
                     return TRUE;
                 }
                 if (LOWORD(wp) == IDOK)
                 {
+                    if (picker->sampling)
+                        return TRUE;
                     if (IsWindowEnabled(GetDlgItem(window, IDOK)))
                         EndDialog(window, IDOK);
                     return TRUE;
